@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:sizer/sizer.dart';
+// import 'screens/meter_reading_screen.dart';
 
-import '../core/app_export.dart';
-import '../widgets/custom_error_widget.dart';
+import 'core/app_export.dart';
+import 'widgets/custom_error_widget.dart';
+import 'services/fcm_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  await Firebase.initializeApp();
+
+  // Initialize FCM
+  await FCMService.initializeFCM();
 
   bool _hasShownError = false;
 
@@ -40,7 +49,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return Sizer(builder: (context, orientation, screenType) {
       return MaterialApp(
-        title: 'aquapay',
+        title: 'Anopog',
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: ThemeMode.light,

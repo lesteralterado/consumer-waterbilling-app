@@ -77,7 +77,7 @@ class ContactPreferenceToggles extends StatelessWidget {
                 Switch(
                   value: isEnabled,
                   onChanged: (value) => onPreferenceChanged(key, value),
-                  activeColor: AppTheme.lightTheme.colorScheme.primary,
+                  activeThumbColor: AppTheme.lightTheme.colorScheme.primary,
                 ),
               ],
             ),

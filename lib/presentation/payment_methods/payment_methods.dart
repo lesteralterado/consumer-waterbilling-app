@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../core/app_export.dart';
+import '../../services/payment_api_service.dart';
+import '../../services/backend_api_service.dart';
 import './widgets/amount_summary_card.dart';
 import './widgets/payment_method_card.dart';
 import './widgets/saved_payment_methods.dart';
@@ -18,6 +23,10 @@ class _PaymentMethodsState extends State<PaymentMethods> {
   Map<String, dynamic>? selectedPaymentMethod;
   bool isLoading = false;
 
+  Map<String, dynamic>? _userData;
+  Map<String, dynamic>? _latestBill;
+  bool billLoading = true;
+
   // Mock data for payment methods
   final List<Map<String, dynamic>> paymentMethods = [
     {
@@ -25,8 +34,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
       'name': 'GCash',
       'description': 'Pay instantly with your GCash wallet',
       'icon': 'account_balance_wallet',
-      'logo':
-          'https://images.unsplash.com/photo-1695653422287-81cfeeb96ade',
+      'logo': 'https://images.unsplash.com/photo-1695653422287-81cfeeb96ade',
       'logoDescription':
           'GCash mobile wallet logo with blue and white branding',
       'color': '0xFF007DFF',
@@ -79,8 +87,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
       'name': 'PayMaya',
       'description': 'Pay with your PayMaya digital wallet',
       'icon': 'payment',
-      'logo':
-          'https://images.unsplash.com/photo-1677058054899-75c533d57048',
+      'logo': 'https://images.unsplash.com/photo-1677058054899-75c533d57048',
       'logoDescription':
           'PayMaya digital payment platform logo with green and white design',
       'color': '0xFF00C853',
@@ -115,15 +122,81 @@ class _PaymentMethodsState extends State<PaymentMethods> {
     },
   ];
 
-  // Mock bill data
-  final double billAmount = 1250.75;
+  // Bill data from backend
+  int billId = 1;
+  double billAmount = 0.0;
   double convenienceFee = 0.0;
-  double totalAmount = 1250.75;
+  double totalAmount = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _calculateTotalAmount();
+    _loadBillData();
+  }
+
+  Future<void> _loadBillData() async {
+    setState(() {
+      billLoading = true;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userDataString = prefs.getString('user_data');
+
+      if (userDataString != null) {
+        _userData = json.decode(userDataString);
+
+        final userId = int.parse(_userData!['id'].toString());
+
+        final billResult = await BackendApiService.getLatestAmountDue(userId);
+        // ignore: avoid_print
+        print('DEBUG: Backend bill API raw response => $billResult');
+        if (billResult['success'] != false) {
+          _latestBill = billResult;
+        }
+      }
+
+      _updateBillData();
+    } catch (e) {
+      // ignore: avoid_print
+      print('DEBUG: Error in _loadBillData => $e');
+      _updateBillData();
+    } finally {
+      setState(() {
+        billLoading = false;
+      });
+    }
+  }
+
+  void _updateBillData() {
+    setState(() {
+      if (_latestBill != null) {
+        try {
+          final amt = _latestBill!['amount_due'];
+          if (amt == null) {
+            billAmount = 0.0;
+          } else if (amt is num) {
+            billAmount = amt.toDouble();
+          } else if (amt is String) {
+            billAmount = double.tryParse(amt) ?? 0.0;
+          } else {
+            billAmount = 0.0;
+          }
+
+          final id = _latestBill!['id'];
+          if (id != null) {
+            billId = id is int ? id : int.tryParse(id.toString()) ?? 1;
+          }
+        } catch (e) {
+          billAmount = 0.0;
+          billId = 1;
+        }
+      } else {
+        billAmount = 0.0;
+        billId = 1;
+      }
+
+      _calculateTotalAmount();
+    });
   }
 
   void _selectPaymentMethod(Map<String, dynamic> method) {
@@ -177,7 +250,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
     );
   }
 
-  void _proceedToPayment() {
+  Future<void> _proceedToPayment() async {
     if (selectedPaymentMethod == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -193,17 +266,92 @@ class _PaymentMethodsState extends State<PaymentMethods> {
       isLoading = true;
     });
 
-    // Simulate payment processing
-    Future.delayed(Duration(seconds: 2), () {
+    try {
+      // Create PayMongo payment intent
+      final paymentMethod = selectedPaymentMethod!['name'];
+      final result = await PaymentApiService.createPaymentIntent(
+        amount: totalAmount,
+        currency: 'PHP',
+        description: 'Water bill payment - $paymentMethod',
+      );
+
       if (mounted) {
         setState(() {
           isLoading = false;
         });
 
-        // Navigate to payment confirmation
-        Navigator.pushNamed(context, '/payment-confirmation');
+        if (result['success'] == true) {
+          final paymentIntent = result['data'];
+          // Debug logging
+          print('DEBUG: paymentIntent => $paymentIntent');
+          print('DEBUG: paymentIntent type => ${paymentIntent.runtimeType}');
+          print('DEBUG: paymentIntent keys => ${paymentIntent?.keys.toList()}');
+
+          if (paymentIntent == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Payment intent is null'),
+                backgroundColor: AppTheme.errorLight,
+                duration: Duration(seconds: 3),
+              ),
+            );
+            return;
+          }
+
+          final clientKey = paymentIntent['client_key'];
+          print('DEBUG: clientKey => $clientKey');
+
+          final paymentIntentId = paymentIntent['id'];
+          print('DEBUG: paymentIntentId => $paymentIntentId');
+
+          // Debug logging
+          print('DEBUG: Navigating to PayMongo with:');
+          print('  clientKey: $clientKey');
+          print('  paymentIntentId: $paymentIntentId');
+          print('  amount: $totalAmount');
+          print('  paymentMethod: $paymentMethod');
+          print('  billId: $billId');
+
+          // Navigate to PayMongo payment screen
+          Navigator.pushNamed(
+            context,
+            '/paymongo-payment',
+            arguments: {
+              'clientKey': clientKey,
+              'paymentIntentId':
+                  paymentIntentId ?? '', // Provide empty string if null
+              'amount': totalAmount,
+              'paymentMethod': paymentMethod,
+              'billId': billId,
+            },
+          );
+        } else {
+          // Show error message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text(result['message'] ?? 'Failed to create payment intent'),
+              backgroundColor: AppTheme.errorLight,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
-    });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error processing payment: $e'),
+            backgroundColor: AppTheme.errorLight,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -260,46 +408,46 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                     SizedBox(height: 3.h),
 
                     // Saved payment methods section
-                    SavedPaymentMethods(
-                      savedMethods: savedPaymentMethods,
-                      onDeleteMethod: _deleteSavedMethod,
-                      onSelectMethod: _selectPaymentMethod,
-                      selectedMethodId: selectedPaymentMethodId,
-                    ),
+                    // SavedPaymentMethods(
+                    //   savedMethods: savedPaymentMethods,
+                    //   onDeleteMethod: _deleteSavedMethod,
+                    //   onSelectMethod: _selectPaymentMethod,
+                    //   selectedMethodId: selectedPaymentMethodId,
+                    // ),
 
-                    if (savedPaymentMethods.isNotEmpty) SizedBox(height: 2.h),
+                    // if (savedPaymentMethods.isNotEmpty) SizedBox(height: 2.h),
 
                     // Add new payment method button
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4.w),
-                      child: OutlinedButton.icon(
-                        onPressed: _addNewPaymentMethod,
-                        icon: CustomIconWidget(
-                          iconName: 'add',
-                          color: AppTheme.lightTheme.primaryColor,
-                          size: 5.w,
-                        ),
-                        label: Text(
-                          'Add New Payment Method',
-                          style:
-                              Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: AppTheme.lightTheme.primaryColor,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 4.w, vertical: 2.h),
-                          side: BorderSide(
-                            color: AppTheme.lightTheme.primaryColor,
-                            width: 1.0,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Padding(
+                    //   padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    //   child: OutlinedButton.icon(
+                    //     onPressed: _addNewPaymentMethod,
+                    //     icon: CustomIconWidget(
+                    //       iconName: 'add',
+                    //       color: AppTheme.lightTheme.primaryColor,
+                    //       size: 5.w,
+                    //     ),
+                    //     label: Text(
+                    //       'Add New Payment Method',
+                    //       style:
+                    //           Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    //                 color: AppTheme.lightTheme.primaryColor,
+                    //                 fontWeight: FontWeight.w500,
+                    //               ),
+                    //     ),
+                    //     style: OutlinedButton.styleFrom(
+                    //       padding: EdgeInsets.symmetric(
+                    //           horizontal: 4.w, vertical: 2.h),
+                    //       side: BorderSide(
+                    //         color: AppTheme.lightTheme.primaryColor,
+                    //         width: 1.0,
+                    //       ),
+                    //       shape: RoundedRectangleBorder(
+                    //         borderRadius: BorderRadius.circular(12),
+                    //       ),
+                    //     ),
+                    //   ),
+                    // ),
 
                     SizedBox(height: 3.h),
 
@@ -323,6 +471,7 @@ class _PaymentMethodsState extends State<PaymentMethods> {
                     // Payment method cards
                     ...paymentMethods
                         .where((method) => method['isAvailable'] == true)
+                        .take(1) // Only show the first payment method
                         .map(
                           (method) => PaymentMethodCard(
                             paymentMethod: method,

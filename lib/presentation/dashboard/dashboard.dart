@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
+import '../../services/backend_api_service.dart';
+import '../../services/payment_api_service.dart';
 import './widgets/account_status_card.dart';
 import './widgets/dashboard_tab_bar.dart';
 import './widgets/quick_actions_widget.dart';
@@ -19,14 +23,18 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
   bool _isRefreshing = false;
   DateTime _lastUpdated = DateTime.now();
 
-  // Mock data for dashboard
-  final Map<String, dynamic> _accountData = {
-    "customerName": "Maria Santos",
-    "accountNumber": "AQ-2024-001234",
-    "status": "Current",
-    "currentBill": 1250.75,
+  Map<String, dynamic>? _userData;
+  Map<String, dynamic>? _latestMeterReading;
+  Map<String, dynamic>? _latestBill;
+  double _totalPayments = 0.0;
+  bool _paymentSuccessful = false;
+  Map<String, dynamic> _accountData = {
+    "customerName": "Loading...",
+    "accountNumber": "Loading...",
+    "status": "Loading...",
+    "currentBill": 0.0,
     "dueDate": DateTime.now().add(const Duration(days: 15)),
-    "meterReading": "1,247",
+    "meterReading": "Loading...",
     "lastUpdated": DateTime.now(),
   };
 
@@ -62,7 +70,7 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
-    _refreshData();
+    _loadData();
   }
 
   @override
@@ -71,13 +79,155 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  Future<void> _loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userDataString = prefs.getString('user_data');
+      // ignore: avoid_print
+      print('DEBUG: user_data from SharedPreferences => $userDataString');
+
+      // Check if payment was successful recently
+      final lastPaymentAmount = prefs.getDouble('last_payment_amount');
+      final lastPaymentTimeString = prefs.getString('last_payment_time');
+      DateTime? lastPaymentTime;
+      if (lastPaymentTimeString != null) {
+        lastPaymentTime = DateTime.tryParse(lastPaymentTimeString);
+      }
+      // If payment was recent (within last minute), consider it successful
+      _paymentSuccessful = lastPaymentAmount != null &&
+          lastPaymentTime != null &&
+          DateTime.now().difference(lastPaymentTime).inMinutes < 1;
+      // Reset the amount after checking
+      if (_paymentSuccessful) {
+        await prefs.remove('last_payment_amount');
+        await prefs.remove('last_payment_time');
+        // ignore: avoid_print
+        print(
+            'DEBUG: Recent payment detected: $lastPaymentAmount, will adjust currentBill');
+      } else {
+        // ignore: avoid_print
+        print('DEBUG: No recent payment detected');
+      }
+
+      if (userDataString != null) {
+        _userData = json.decode(userDataString);
+        // ignore: avoid_print
+        print('DEBUG: Parsed _userData => $_userData');
+
+        final userId = int.parse(_userData!['id'].toString());
+        // ignore: avoid_print
+        print('DEBUG: Fetching data for userId => $userId');
+
+        // Use BackendApiService which has working endpoints
+        final meterResult =
+            await BackendApiService.getLatestMeterReading(userId);
+        // ignore: avoid_print
+        print('DEBUG: Meter API raw response => $meterResult');
+        if (meterResult['success'] != false) {
+          _latestMeterReading = meterResult;
+        }
+
+        final billResult = await BackendApiService.getLatestAmountDue(userId);
+        // ignore: avoid_print
+        print('DEBUG: Bill API raw response => $billResult');
+        // ignore: avoid_print
+        print(
+            'DEBUG: Bill amount_due fetched: ${billResult['amount_due']} at ${DateTime.now()}');
+        if (billResult['success'] != false) {
+          _latestBill = billResult;
+          final billId = billResult['bill_id'];
+          if (billId != null) {
+            final paymentsResult =
+                await PaymentApiService.getPaymentsByBillId(billId);
+            // ignore: avoid_print
+            print('DEBUG: Payments for bill $billId => $paymentsResult');
+            if (paymentsResult['success'] == true) {
+              final payments = paymentsResult['data'] as List<dynamic>? ?? [];
+              _totalPayments = 0.0;
+              for (var payment in payments) {
+                final amount =
+                    double.tryParse(payment['amount_paid'].toString()) ?? 0.0;
+                _totalPayments += amount;
+              }
+              // ignore: avoid_print
+              print('DEBUG: Total payments for bill $billId: $_totalPayments');
+            }
+          }
+        }
+      } else {
+        // ignore: avoid_print
+        print(
+            'DEBUG: user_data is NULL in SharedPreferences - user may not be logged in');
+      }
+      _updateAccountData();
+    } catch (e) {
+      // ignore: avoid_print
+      print('DEBUG: Error in _loadData => $e');
+      _updateAccountData();
+    }
+  }
+
+  void _updateAccountData() {
+    if (_userData != null) {
+      // Debug: log raw responses to help diagnose parsing issues
+      // ignore: avoid_print
+      print('DEBUG: _latestMeterReading => $_latestMeterReading');
+      // ignore: avoid_print
+      print('DEBUG: _latestBill => $_latestBill');
+
+      // BackendApiService.getLatestMeterReading returns { success: true, reading: "value" }
+      String meterReading = '0';
+      if (_latestMeterReading != null &&
+          _latestMeterReading!['reading'] != null) {
+        meterReading = _latestMeterReading!['reading'].toString();
+      }
+
+      // BackendApiService.getLatestAmountDue returns { success: true, amount_due: 1234.56, bill_id: 1 }
+      double currentBill = 0.0;
+      if (_latestBill != null && _latestBill!['amount_due'] != null) {
+        final amt = _latestBill!['amount_due'];
+        if (amt is num) {
+          currentBill = amt.toDouble();
+        } else if (amt is String) {
+          currentBill = double.tryParse(amt) ?? 0.0;
+        }
+        // Subtract total payments to get outstanding amount
+        currentBill -= _totalPayments;
+        // If payment was just successful, set to 0 (assuming full payment)
+        if (_paymentSuccessful) {
+          currentBill = 0.0;
+          _paymentSuccessful = false; // Reset after use
+          // ignore: avoid_print
+          print('DEBUG: Recent payment detected, setting currentBill to 0.0');
+        }
+        // ignore: avoid_print
+        print(
+            'DEBUG: Calculated currentBill: $currentBill (amount_due: ${_latestBill!['amount_due']} - payments: $_totalPayments)');
+      }
+
+      DateTime dueDate = DateTime.now().add(const Duration(days: 15));
+      // Note: BackendApiService doesn't return due_date, so using default or derive from system
+
+      setState(() {
+        _accountData = {
+          "customerName": _userData!['full_name'] ?? 'Unknown',
+          "accountNumber": _userData!['meter_number'] ?? 'N/A',
+          "status": "Current",
+          "currentBill": currentBill,
+          "dueDate": dueDate,
+          "meterReading": meterReading,
+          "lastUpdated": DateTime.now(),
+        };
+      });
+    }
+  }
+
   Future<void> _refreshData() async {
     setState(() {
       _isRefreshing = true;
     });
 
-    // Simulate API call delay
-    await Future.delayed(const Duration(seconds: 1));
+    await _loadData();
 
     setState(() {
       _isRefreshing = false;
@@ -100,7 +250,8 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
         Navigator.pushNamed(context, '/issue-reporting');
         break;
       case 4:
-        // Profile tab - would navigate to profile screen
+        // Profile tab - show logout
+        _showLogoutDialog();
         break;
     }
   }
@@ -131,6 +282,57 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
       default:
         break;
     }
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(
+            'Logout',
+            style: AppTheme.lightTheme.textTheme.titleLarge,
+          ),
+          content: Text(
+            'Are you sure you want to logout?',
+            style: AppTheme.lightTheme.textTheme.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppTheme.lightTheme.colorScheme.primary,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _logout,
+              child: Text(
+                'Logout',
+                style: TextStyle(
+                  color: AppTheme.lightTheme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _logout() async {
+    // Close the dialog
+    Navigator.of(context).pop();
+
+    // Clear user data
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('user_data');
+    await prefs.remove('saved_username');
+
+    // Navigate back to login
+    Navigator.of(context).pushReplacementNamed('/login-screen');
   }
 
   String _getGreeting() {

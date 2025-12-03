@@ -8,12 +8,14 @@ class AmountSummaryCard extends StatelessWidget {
   final double billAmount;
   final double convenienceFee;
   final double totalAmount;
+  final bool isLoading;
 
   const AmountSummaryCard({
     Key? key,
     required this.billAmount,
     required this.convenienceFee,
     required this.totalAmount,
+    this.isLoading = false,
   }) : super(key: key);
 
   @override
@@ -80,20 +82,31 @@ class AmountSummaryCard extends StatelessWidget {
             children: [
               Text(
                 'Total Amount',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
                       color: isLight
                           ? AppTheme.textPrimaryLight
                           : AppTheme.textPrimaryDark,
                     ),
               ),
-              Text(
-                '₱${totalAmount.toStringAsFixed(2)}',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.lightTheme.primaryColor,
+              isLoading
+                  ? SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation(
+                            Theme.of(context).colorScheme.primary),
+                      ),
+                    )
+                  : Text(
+                      '₱${totalAmount.toStringAsFixed(2)}',
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.lightTheme.primaryColor,
+                              ),
                     ),
-              ),
             ],
           ),
         ],
@@ -119,17 +132,27 @@ class AmountSummaryCard extends StatelessWidget {
                     : AppTheme.textSecondaryDark,
               ),
         ),
-        Text(
-          amount > 0 ? '₱${amount.toStringAsFixed(2)}' : 'FREE',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isWarning
-                    ? AppTheme.warningLight
-                    : (isLight
-                        ? AppTheme.textPrimaryLight
-                        : AppTheme.textPrimaryDark),
+        isLoading
+            ? SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(
+                      Theme.of(context).colorScheme.primary),
+                ),
+              )
+            : Text(
+                amount > 0 ? '₱${amount.toStringAsFixed(2)}' : 'FREE',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isWarning
+                          ? AppTheme.warningLight
+                          : (isLight
+                              ? AppTheme.textPrimaryLight
+                              : AppTheme.textPrimaryDark),
+                    ),
               ),
-        ),
       ],
     );
   }

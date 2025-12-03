@@ -1,11 +1,13 @@
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 import '../../core/app_export.dart';
+import '../../services/issue_reporting_api_service.dart';
 import './widgets/contact_preference_toggles.dart';
 import './widgets/issue_category_selector.dart';
 import './widgets/photo_attachment_section.dart';
@@ -35,22 +37,23 @@ class _IssueReportingState extends State<IssueReporting> {
   bool _isSubmitting = false;
   bool _isDraftSaved = false;
 
-  // Mock user data
-  final Map<String, dynamic> _userData = {
-    "accountNumber": "WU-2024-001234",
-    "customerName": "Maria Santos",
-    "serviceAddress":
-        "123 Rizal Street, Barangay San Jose, Quezon City, Metro Manila",
-    "meterNumber": "MT-789456",
-    "contactNumber": "+63 917 123 4567",
-    "email": "maria.santos@email.com",
-  };
+  Map<String, dynamic>? _userData;
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
     _loadDraftData();
-    _locationController.text = _userData["serviceAddress"] as String;
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userDataString = prefs.getString('user_data');
+    if (userDataString != null) {
+      _userData = json.decode(userDataString);
+      _locationController.text = _userData!['address'] ?? '';
+    }
+    setState(() {}); // Update UI after loading data
   }
 
   @override
@@ -139,19 +142,54 @@ class _IssueReportingState extends State<IssueReporting> {
       return;
     }
 
+    if (_userData == null) {
+      Fluttertoast.showToast(
+        msg: "User data not available. Please login again.",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM,
+        backgroundColor: AppTheme.lightTheme.colorScheme.error,
+        textColor: AppTheme.lightTheme.colorScheme.onError,
+      );
+      return;
+    }
+
     setState(() {
       _isSubmitting = true;
     });
 
     try {
-      // Simulate API submission delay
-      await Future.delayed(const Duration(seconds: 2));
+      final userId = int.parse(_userData!['id'].toString());
 
-      final ticketNumber = _generateTicketNumber();
-      final resolution = _getEstimatedResolution();
+      // For now, skip photo upload - would need to implement file upload
+      List<String>? photoUrls;
+      // TODO: Upload photos and get URLs
 
-      // Show success and navigate to confirmation
-      _showSubmissionSuccess(ticketNumber, resolution);
+      final result = await IssueReportingApiService.submitIssueReport(
+        userId: userId,
+        category: _selectedCategory!,
+        priority: _selectedPriority!,
+        description: _descriptionController.text.trim(),
+        location: _locationController.text.trim(),
+        contactPreferences: _contactPreferences,
+        photoUrls: photoUrls,
+      );
+
+      if (result['success'] == true) {
+        final ticketNumber = _generateTicketNumber();
+        final resolution = _getEstimatedResolution();
+
+        // Show success and navigate to confirmation
+        _showSubmissionSuccess(ticketNumber, resolution);
+      } else {
+        Fluttertoast.showToast(
+          msg:
+              result['message'] ?? "Failed to submit report. Please try again.",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          backgroundColor: AppTheme.lightTheme.colorScheme.error,
+          textColor: AppTheme.lightTheme.colorScheme.onError,
+        );
+      }
     } catch (e) {
       Fluttertoast.showToast(
         msg: "Failed to submit report. Please try again.",
@@ -399,96 +437,100 @@ class _IssueReportingState extends State<IssueReporting> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Account Information Card
-                      Container(
-                        padding: EdgeInsets.all(4.w),
-                        decoration: BoxDecoration(
-                          color: AppTheme.lightTheme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppTheme.lightTheme.colorScheme.outline
-                                .withValues(alpha: 0.3),
+                      if (_userData != null)
+                        Container(
+                          padding: EdgeInsets.all(4.w),
+                          decoration: BoxDecoration(
+                            color: AppTheme.lightTheme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.lightTheme.colorScheme.outline
+                                  .withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CustomIconWidget(
+                                    iconName: 'account_circle',
+                                    color:
+                                        AppTheme.lightTheme.colorScheme.primary,
+                                    size: 6.w,
+                                  ),
+                                  SizedBox(width: 3.w),
+                                  Text(
+                                    'Account Information',
+                                    style: AppTheme
+                                        .lightTheme.textTheme.titleMedium
+                                        ?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 2.h),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Account Number',
+                                          style: AppTheme
+                                              .lightTheme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: AppTheme.lightTheme
+                                                .colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        Text(
+                                          _userData!["meter_number"]
+                                                  as String? ??
+                                              'N/A',
+                                          style: AppTheme
+                                              .lightTheme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Customer Name',
+                                          style: AppTheme
+                                              .lightTheme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: AppTheme.lightTheme
+                                                .colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        Text(
+                                          _userData!["full_name"] as String? ??
+                                              'Unknown',
+                                          style: AppTheme
+                                              .lightTheme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                CustomIconWidget(
-                                  iconName: 'account_circle',
-                                  color:
-                                      AppTheme.lightTheme.colorScheme.primary,
-                                  size: 6.w,
-                                ),
-                                SizedBox(width: 3.w),
-                                Text(
-                                  'Account Information',
-                                  style: AppTheme
-                                      .lightTheme.textTheme.titleMedium
-                                      ?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 2.h),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Account Number',
-                                        style: AppTheme
-                                            .lightTheme.textTheme.bodySmall
-                                            ?.copyWith(
-                                          color: AppTheme.lightTheme.colorScheme
-                                              .onSurfaceVariant,
-                                        ),
-                                      ),
-                                      Text(
-                                        _userData["accountNumber"] as String,
-                                        style: AppTheme
-                                            .lightTheme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Customer Name',
-                                        style: AppTheme
-                                            .lightTheme.textTheme.bodySmall
-                                            ?.copyWith(
-                                          color: AppTheme.lightTheme.colorScheme
-                                              .onSurfaceVariant,
-                                        ),
-                                      ),
-                                      Text(
-                                        _userData["customerName"] as String,
-                                        style: AppTheme
-                                            .lightTheme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
 
                       SizedBox(height: 4.h),
 

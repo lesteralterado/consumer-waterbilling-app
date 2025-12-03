@@ -34,18 +34,17 @@ class DashboardTabBar extends StatelessWidget implements PreferredSizeWidget {
               child: Row(
                 children: [
                   CustomImageWidget(
-                    imageUrl:
-                        "https://images.unsplash.com/photo-1559827260-dc66d52bef19?fm=jpg&q=60&w=3000&ixlib=rb-4.0.3",
+                    imageUrl: "assets/images/logo.png",
                     width: 10.w,
                     height: 10.w,
                     fit: BoxFit.cover,
                     semanticLabel:
-                        "AquaPay logo - stylized water drop with blue gradient background",
+                        "Anopog logo - stylized water drop with blue gradient background",
                   ),
                   SizedBox(width: 3.w),
                   Expanded(
                     child: Text(
-                      'AquaPay',
+                      'Anopog',
                       style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: AppTheme.lightTheme.colorScheme.primary,

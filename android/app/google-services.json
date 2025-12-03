@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "143323852666",
+    "project_id": "water-billing-system-ea961",
+    "storage_bucket": "water-billing-system-ea961.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:143323852666:android:1d5bd668027bd3076bb0c3",
+        "android_client_info": {
+          "package_name": "com.anopog.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCzuCd7auLIK451iKNz7hzWMq6_bxDt8D8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

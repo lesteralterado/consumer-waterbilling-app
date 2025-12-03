@@ -5,6 +5,7 @@ import '../presentation/bill_details/bill_details.dart';
 import '../presentation/login_screen/login_screen.dart';
 import '../presentation/dashboard/dashboard.dart';
 import '../presentation/payment_methods/payment_methods.dart';
+import '../presentation/paymongo_payment/paymongo_payment.dart';
 import '../presentation/payment_confirmation/payment_confirmation.dart';
 import '../presentation/issue_reporting/issue_reporting.dart';
 import '../presentation/payment_history/payment_history.dart';
@@ -18,6 +19,7 @@ class AppRoutes {
   static const String login = '/login-screen';
   static const String dashboard = '/dashboard';
   static const String paymentMethods = '/payment-methods';
+  static const String paymongoPayment = '/paymongo-payment';
   static const String paymentConfirmation = '/payment-confirmation';
   static const String issueReporting = '/issue-reporting';
   static const String paymentHistory = '/payment-history';
@@ -30,6 +32,7 @@ class AppRoutes {
     login: (context) => const LoginScreen(),
     dashboard: (context) => const Dashboard(),
     paymentMethods: (context) => const PaymentMethods(),
+    paymongoPayment: (context) => const PaymongoPayment(),
     paymentConfirmation: (context) => const PaymentConfirmation(),
     issueReporting: (context) => const IssueReporting(),
     paymentHistory: (context) => const PaymentHistory(),

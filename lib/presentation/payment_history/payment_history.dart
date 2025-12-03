@@ -561,7 +561,7 @@ class _PaymentHistoryState extends State<PaymentHistory> {
 
   String _generateReceiptContent(Map<String, dynamic> transaction) {
     return '''
-AquaPay - Payment Receipt
+Anopog - Payment Receipt
 ========================
 
 Transaction ID: ${transaction['transactionId']}
@@ -579,7 +579,7 @@ Payment Details:
 - Reference: ${transaction['referenceNumber']}
 - Status: ${transaction['status']}
 
-Thank you for using AquaPay!
+Thank you for using Anopog!
 ''';
   }
 

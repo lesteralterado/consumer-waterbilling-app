@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
+import '../../services/notification_api_service.dart';
 import './widgets/notification_card_widget.dart';
 import './widgets/notification_detail_widget.dart';
 import './widgets/notification_empty_state_widget.dart';
@@ -26,6 +29,12 @@ class _NotificationsState extends State<Notifications>
   bool _isSelectionMode = false;
   Set<int> _selectedNotifications = {};
 
+  // API state
+  bool _isLoading = true;
+  bool _isRefreshing = false;
+  String? _errorMessage;
+  String? _userId;
+
   final List<String> _categories = [
     'all',
     'billing',
@@ -34,16 +43,16 @@ class _NotificationsState extends State<Notifications>
     'emergency'
   ];
 
-  // Mock notifications data
-  final List<Map<String, dynamic>> _allNotifications = [
+  // Notifications data from API
+  List<Map<String, dynamic>> _allNotifications = [
     {
       "id": 1,
-      "sender": "AquaPay Billing",
+      "sender": "Anopog Billing",
       "subject": "Monthly Water Bill - October 2024",
       "preview":
           "Your water bill for October 2024 is now available. Amount due: ₱1,245.50",
       "content":
-          """Dear Valued Customer, Your monthly water bill for October 2024 is now ready for viewing and payment. Billing Period: October 1-31, 2024 Previous Reading: 1,234 cubic meters Current Reading: 1,267 cubic meters Consumption: 33 cubic meters Amount Due: ₱1,245.50 Due Date: November 15, 2024 You can pay your bill through the following methods: • GCash payment within the app • Online banking • Over-the-counter payments at authorized centers Thank you for choosing AquaPay for your water utility needs.""",
+          """Dear Valued Customer, Your monthly water bill for October 2024 is now ready for viewing and payment. Billing Period: October 1-31, 2024 Previous Reading: 1,234 cubic meters Current Reading: 1,267 cubic meters Consumption: 33 cubic meters Amount Due: ₱1,245.50 Due Date: November 15, 2024 You can pay your bill through the following methods: • GCash payment within the app • Online banking • Over-the-counter payments at authorized centers Thank you for choosing Anopog for your water utility needs.""",
       "category": "billing",
       "timestamp": DateTime.now().subtract(const Duration(hours: 2)),
       "isRead": false,
@@ -55,7 +64,7 @@ class _NotificationsState extends State<Notifications>
     },
     {
       "id": 2,
-      "sender": "AquaPay Service",
+      "sender": "Anopog Service",
       "subject": "Scheduled Maintenance Notice",
       "preview":
           "Water service interruption scheduled for November 5, 2024 from 8:00 AM to 2:00 PM",
@@ -69,12 +78,12 @@ class _NotificationsState extends State<Notifications>
     },
     {
       "id": 3,
-      "sender": "AquaPay Emergency",
+      "sender": "Anopog Emergency",
       "subject": "Water Quality Advisory",
       "preview":
           "Temporary water quality advisory issued for your area. Boil water before consumption.",
       "content":
-          """URGENT: Water Quality Advisory Due to recent heavy rainfall and flooding in the watershed area, we are issuing a precautionary boil water advisory for the following areas: Affected Areas: • Barangay San Miguel • Barangay Santa Cruz • Barangay San Juan Effective immediately until further notice, please: • Boil water for at least 1 minute before drinking • Use boiled or bottled water for cooking • Use boiled water for brushing teeth • Normal use for bathing and washing is safe We are conducting additional water quality testing and will notify you when the advisory is lifted. For questions, contact our emergency hotline: 1-800-AQUAPAY""",
+          """URGENT: Water Quality Advisory Due to recent heavy rainfall and flooding in the watershed area, we are issuing a precautionary boil water advisory for the following areas: Affected Areas: • Barangay San Miguel • Barangay Santa Cruz • Barangay San Juan Effective immediately until further notice, please: • Boil water for at least 1 minute before drinking • Use boiled or bottled water for cooking • Use boiled water for brushing teeth • Normal use for bathing and washing is safe We are conducting additional water quality testing and will notify you when the advisory is lifted. For questions, contact our emergency hotline: 1-800-Anopog""",
       "category": "emergency",
       "timestamp": DateTime.now().subtract(const Duration(days: 2)),
       "isRead": false,
@@ -90,12 +99,12 @@ class _NotificationsState extends State<Notifications>
     },
     {
       "id": 4,
-      "sender": "AquaPay Customer Service",
+      "sender": "Anopog Customer Service",
       "subject": "Payment Confirmation - October 2024",
       "preview":
           "Your payment of ₱1,180.25 has been successfully processed via GCash.",
       "content":
-          """Payment Confirmation Thank you for your payment! Your transaction has been successfully processed. Transaction Details: Payment Amount: ₱1,180.25 Payment Method: GCash Transaction ID: GC-2024-10-28-001234 Date: October 28, 2024, 3:45 PM Reference Number: AP-PAY-789456123 Your account is now up to date. Your next bill will be available on November 1, 2024. Keep this confirmation for your records. If you have any questions about this payment, please contact our customer service team. Thank you for using AquaPay!""",
+          """Payment Confirmation Thank you for your payment! Your transaction has been successfully processed. Transaction Details: Payment Amount: ₱1,180.25 Payment Method: GCash Transaction ID: GC-2024-10-28-001234 Date: October 28, 2024, 3:45 PM Reference Number: AP-PAY-789456123 Your account is now up to date. Your next bill will be available on November 1, 2024. Keep this confirmation for your records. If you have any questions about this payment, please contact our customer service team. Thank you for using Anopog!""",
       "category": "billing",
       "timestamp": DateTime.now().subtract(const Duration(days: 3)),
       "isRead": true,
@@ -104,7 +113,7 @@ class _NotificationsState extends State<Notifications>
     },
     {
       "id": 5,
-      "sender": "AquaPay Service",
+      "sender": "Anopog Service",
       "subject": "New Feature: Auto-Pay Setup",
       "preview":
           "Set up automatic payments for your water bills and never miss a due date again.",
@@ -124,12 +133,12 @@ class _NotificationsState extends State<Notifications>
     },
     {
       "id": 6,
-      "sender": "AquaPay System",
+      "sender": "Anopog System",
       "subject": "Account Security Update",
       "preview":
           "Your account security settings have been updated successfully.",
       "content":
-          """Account Security Update Your account security settings have been successfully updated. Changes Made: • Password updated • Two-factor authentication enabled • Login notifications activated These changes were made on October 25, 2024 at 2:30 PM from your registered device. If you did not make these changes, please contact our security team immediately at security@aquapay.ph or call our emergency hotline. Your account security is our priority. Thank you for keeping your account safe.""",
+          """Account Security Update Your account security settings have been successfully updated. Changes Made: • Password updated • Two-factor authentication enabled • Login notifications activated These changes were made on October 25, 2024 at 2:30 PM from your registered device. If you did not make these changes, please contact our security team immediately at security@Anopog.ph or call our emergency hotline. Your account security is our priority. Thank you for keeping your account safe.""",
       "category": "service",
       "timestamp": DateTime.now().subtract(const Duration(days: 7)),
       "isRead": true,
@@ -177,6 +186,83 @@ class _NotificationsState extends State<Notifications>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadUserDataAndNotifications();
+  }
+
+  Future<void> _loadUserDataAndNotifications() async {
+    try {
+      // Get user data from shared preferences
+      final prefs = await SharedPreferences.getInstance();
+      final userDataString = prefs.getString('user_data');
+
+      if (userDataString != null) {
+        final userData = json.decode(userDataString);
+        _userId = userData['id'].toString();
+
+        // Fetch notifications from API
+        await _fetchNotifications();
+      } else {
+        setState(() {
+          _errorMessage = 'User not logged in';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load user data: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchNotifications() async {
+    if (_userId == null) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final result = await NotificationApiService.fetchUserNotifications(
+        userId: _userId!,
+      );
+
+      if (result['success']) {
+        final notifications = result['notifications'] as List<dynamic>;
+        setState(() {
+          _allNotifications = notifications.map((notification) {
+            // Transform backend notification format to match UI expectations
+            return {
+              'id': notification['id'] ?? 0,
+              'sender': notification['sender'] ?? 'Anopog',
+              'subject': notification['subject'] ?? 'Notification',
+              'preview':
+                  notification['preview'] ?? notification['content'] ?? '',
+              'content': notification['content'] ?? '',
+              'category': notification['category'] ?? 'service',
+              'timestamp': notification['timestamp'] != null
+                  ? DateTime.parse(notification['timestamp'])
+                  : DateTime.now(),
+              'isRead': notification['isRead'] ?? false,
+              'attachments': notification['attachments'] ?? [],
+              'actions': notification['actions'] ?? [],
+            };
+          }).toList();
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = result['message'] ?? 'Failed to fetch notifications';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Network error: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -277,6 +363,7 @@ class _NotificationsState extends State<Notifications>
         ),
       ),
     );
+    ;
   }
 
   void _toggleSelectionMode() {
@@ -321,16 +408,94 @@ class _NotificationsState extends State<Notifications>
   }
 
   Future<void> _refreshNotifications() async {
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 1));
     setState(() {
-      // In a real app, this would fetch new notifications from the server
+      _isRefreshing = true;
     });
+
+    try {
+      await _fetchNotifications();
+    } finally {
+      setState(() {
+        _isRefreshing = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final filteredNotifications = _filteredNotifications;
+
+    // Show loading state
+    if (_isLoading && !_isRefreshing) {
+      return Scaffold(
+        backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: Text(
+            'Notifications',
+            style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          centerTitle: true,
+          backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+          elevation: 0,
+          leading: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: CustomIconWidget(
+              iconName: 'arrow_back',
+              size: 6.w,
+              color: AppTheme.lightTheme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                color: AppTheme.lightTheme.primaryColor,
+              ),
+              SizedBox(height: 3.h),
+              Text(
+                'Loading notifications...',
+                style: AppTheme.lightTheme.textTheme.bodyLarge,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Show error state
+    if (_errorMessage != null && !_isRefreshing) {
+      return Scaffold(
+        backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: Text(
+            'Notifications',
+            style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          centerTitle: true,
+          backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+          elevation: 0,
+          leading: IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: CustomIconWidget(
+              iconName: 'arrow_back',
+              size: 6.w,
+              color: AppTheme.lightTheme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+        body: NotificationEmptyStateWidget(
+          message: _errorMessage!,
+          actionText: 'Retry',
+          onActionPressed: _loadUserDataAndNotifications,
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
@@ -532,93 +697,106 @@ class _NotificationsState extends State<Notifications>
     return RefreshIndicator(
       onRefresh: _refreshNotifications,
       color: AppTheme.lightTheme.primaryColor,
-      child: ListView.builder(
-        padding: EdgeInsets.only(bottom: 2.h),
-        itemCount: notifications.length,
-        itemBuilder: (context, index) {
-          final notification = notifications[index];
-          final notificationId = notification['id'] as int;
-          final isSelected = _selectedNotifications.contains(notificationId);
-
-          Widget notificationCard = NotificationCardWidget(
-            notification: notification,
-            onTap: _isSelectionMode
-                ? () => _toggleNotificationSelection(notificationId)
-                : () => _showNotificationDetail(notification),
-            onMarkAsRead: () => _markAsRead(notificationId),
-            onDelete: () => _deleteNotification(notificationId),
-            onArchive: () => _archiveNotification(notificationId),
-          );
-
-          if (_isSelectionMode) {
-            return Container(
-              margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.5.h),
-              child: Row(
-                children: [
-                  Checkbox(
-                    value: isSelected,
-                    onChanged: (value) =>
-                        _toggleNotificationSelection(notificationId),
-                  ),
-                  Expanded(child: notificationCard),
-                ],
+      child: _isRefreshing
+          ? Center(
+              child: Padding(
+                padding: EdgeInsets.only(top: 5.h),
+                child: CircularProgressIndicator(
+                  color: AppTheme.lightTheme.primaryColor,
+                ),
               ),
-            );
-          }
+            )
+          : ListView.builder(
+              padding: EdgeInsets.only(bottom: 2.h),
+              itemCount: notifications.length,
+              itemBuilder: (context, index) {
+                final notification = notifications[index];
+                final notificationId = notification['id'] as int;
+                final isSelected =
+                    _selectedNotifications.contains(notificationId);
 
-          return GestureDetector(
-            onLongPress: () {
-              _toggleSelectionMode();
-              _toggleNotificationSelection(notificationId);
-            },
-            child: Slidable(
-              key: ValueKey(notificationId),
-              startActionPane: ActionPane(
-                motion: const ScrollMotion(),
-                children: [
-                  SlidableAction(
-                    onPressed: (context) {
-                      final isRead = notification['isRead'] as bool? ?? false;
-                      if (isRead) {
-                        _markAsUnread(notificationId);
-                      } else {
-                        _markAsRead(notificationId);
-                      }
-                    },
-                    backgroundColor: AppTheme.lightTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    icon: Icons.mark_email_read,
-                    label: (notification['isRead'] as bool? ?? false)
-                        ? 'Unread'
-                        : 'Read',
+                Widget notificationCard = NotificationCardWidget(
+                  notification: notification,
+                  onTap: _isSelectionMode
+                      ? () => _toggleNotificationSelection(notificationId)
+                      : () => _showNotificationDetail(notification),
+                  onMarkAsRead: () => _markAsRead(notificationId),
+                  onDelete: () => _deleteNotification(notificationId),
+                  onArchive: () => _archiveNotification(notificationId),
+                );
+
+                if (_isSelectionMode) {
+                  return Container(
+                    margin:
+                        EdgeInsets.symmetric(horizontal: 4.w, vertical: 0.5.h),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: isSelected,
+                          onChanged: (value) =>
+                              _toggleNotificationSelection(notificationId),
+                        ),
+                        Expanded(child: notificationCard),
+                      ],
+                    ),
+                  );
+                }
+
+                return GestureDetector(
+                  onLongPress: () {
+                    _toggleSelectionMode();
+                    _toggleNotificationSelection(notificationId);
+                  },
+                  child: Slidable(
+                    key: ValueKey(notificationId),
+                    startActionPane: ActionPane(
+                      motion: const ScrollMotion(),
+                      children: [
+                        SlidableAction(
+                          onPressed: (context) {
+                            final isRead =
+                                notification['isRead'] as bool? ?? false;
+                            if (isRead) {
+                              _markAsUnread(notificationId);
+                            } else {
+                              _markAsRead(notificationId);
+                            }
+                          },
+                          backgroundColor: AppTheme.lightTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          icon: Icons.mark_email_read,
+                          label: (notification['isRead'] as bool? ?? false)
+                              ? 'Unread'
+                              : 'Read',
+                        ),
+                      ],
+                    ),
+                    endActionPane: ActionPane(
+                      motion: const ScrollMotion(),
+                      children: [
+                        SlidableAction(
+                          onPressed: (context) =>
+                              _archiveNotification(notificationId),
+                          backgroundColor: const Color(0xFFFFC107),
+                          foregroundColor: Colors.white,
+                          icon: Icons.archive,
+                          label: 'Archive',
+                        ),
+                        SlidableAction(
+                          onPressed: (context) =>
+                              _deleteNotification(notificationId),
+                          backgroundColor:
+                              AppTheme.lightTheme.colorScheme.error,
+                          foregroundColor: Colors.white,
+                          icon: Icons.delete,
+                          label: 'Delete',
+                        ),
+                      ],
+                    ),
+                    child: notificationCard,
                   ),
-                ],
-              ),
-              endActionPane: ActionPane(
-                motion: const ScrollMotion(),
-                children: [
-                  SlidableAction(
-                    onPressed: (context) =>
-                        _archiveNotification(notificationId),
-                    backgroundColor: const Color(0xFFFFC107),
-                    foregroundColor: Colors.white,
-                    icon: Icons.archive,
-                    label: 'Archive',
-                  ),
-                  SlidableAction(
-                    onPressed: (context) => _deleteNotification(notificationId),
-                    backgroundColor: AppTheme.lightTheme.colorScheme.error,
-                    foregroundColor: Colors.white,
-                    icon: Icons.delete,
-                    label: 'Delete',
-                  ),
-                ],
-              ),
-              child: notificationCard,
-            ),
-          );
-        },
-      ),
+                );
+              }),
     );
   }
 }

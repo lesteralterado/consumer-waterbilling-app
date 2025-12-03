@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 import '../../core/app_export.dart';
+import '../../services/backend_api_service.dart';
+import '../../services/payment_api_service.dart';
 import './widgets/bill_header_card.dart';
 import './widgets/charges_breakdown.dart';
 import './widgets/consumption_chart.dart';
@@ -17,128 +21,111 @@ class BillDetails extends StatefulWidget {
 }
 
 class _BillDetailsState extends State<BillDetails> {
-  bool _isLoading = false;
+  bool _isLoading = true;
   bool _isRefreshing = false;
 
-  // Mock bill data
-  final Map<String, dynamic> _billData = {
-    "id": "BILL-2024-001",
-    "amount": 1250.75,
-    "status": "pending",
-    "dueDate": "Nov 15, 2024",
-    "billingPeriod": "Oct 1 - Oct 31, 2024",
-    "accountNumber": "WTR-123456789",
-    "customerName": "Maria Santos",
-  };
+  Map<String, dynamic>? _userData;
+  Map<String, dynamic>? _billData;
+  Map<String, dynamic>? _meterData;
+  List<Map<String, dynamic>> _consumptionData = [];
+  List<Map<String, dynamic>> _charges = [];
+  List<Map<String, dynamic>> _paymentHistory = [];
 
-  // Mock meter reading data
-  final Map<String, dynamic> _meterData = {
-    "currentReading": 1245,
-    "previousReading": 1220,
-    "readingDate": "Oct 31, 2024",
-    "meterNumber": "MTR-789123",
-    "photos": [
-      {
-        "url":
-            "https://images.unsplash.com/photo-1558444686-de28038d378d",
-        "semanticLabel":
-            "Digital water meter display showing current reading of 1245 cubic meters with clear LCD screen and metal housing",
-        "date": "Oct 31, 2024",
-      },
-      {
-        "url":
-            "https://images.unsplash.com/photo-1666855021109-c79420d7570a",
-        "semanticLabel":
-            "Close-up view of water meter installation with pipes and valve connections in outdoor utility box",
-        "date": "Oct 31, 2024",
-      },
-    ],
-  };
+  @override
+  void initState() {
+    super.initState();
+    _loadBillData();
+  }
 
-  // Mock consumption chart data
-  final List<Map<String, dynamic>> _consumptionData = [
-    {"month": "May", "consumption": 22},
-    {"month": "Jun", "consumption": 28},
-    {"month": "Jul", "consumption": 35},
-    {"month": "Aug", "consumption": 31},
-    {"month": "Sep", "consumption": 26},
-    {"month": "Oct", "consumption": 25},
-  ];
+  Future<void> _loadBillData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userDataString = prefs.getString('user_data');
 
-  // Mock charges breakdown
-  final List<Map<String, dynamic>> _charges = [
-    {
-      "name": "Base Rate",
-      "description": "Fixed monthly service charge",
-      "amount": 150.00,
-      "fullDescription":
-          "This is the fixed monthly service charge that covers basic water infrastructure maintenance, meter reading services, and customer support operations.",
-      "details": [
-        {"item": "Service Connection", "amount": 100.00},
-        {"item": "Meter Maintenance", "amount": 50.00},
-      ],
-    },
-    {
-      "name": "Water Consumption",
-      "description": "25 m³ @ ₱18.50 per m³",
-      "amount": 462.50,
-      "fullDescription":
-          "Water consumption charges are calculated based on your actual usage measured by the water meter. The current rate is ₱18.50 per cubic meter for residential customers.",
-      "details": [
-        {"item": "First 10 m³ @ ₱15.00", "amount": 150.00},
-        {"item": "Next 15 m³ @ ₱20.83", "amount": 312.50},
-      ],
-    },
-    {
-      "name": "Environmental Fee",
-      "description": "Water resource protection fee",
-      "amount": 25.00,
-      "fullDescription":
-          "The environmental fee supports water resource protection programs, watershed management, and environmental compliance initiatives to ensure sustainable water supply.",
-    },
-    {
-      "name": "VAT (12%)",
-      "description": "Value Added Tax",
-      "amount": 76.50,
-      "fullDescription":
-          "Value Added Tax is applied to water utility services as mandated by the Bureau of Internal Revenue. This tax supports government infrastructure and public services.",
-    },
-    {
-      "name": "Sewerage Fee",
-      "description": "Wastewater treatment charge",
-      "amount": 536.75,
-      "fullDescription":
-          "Sewerage fees cover the cost of wastewater collection, treatment, and disposal services to protect public health and the environment.",
-    },
-  ];
+      if (userDataString != null) {
+        _userData = json.decode(userDataString);
+        final userId = int.parse(_userData!['id'].toString());
 
-  // Mock payment history
-  final List<Map<String, dynamic>> _paymentHistory = [
-    {
-      "id": "PAY-2024-003",
-      "amount": 1180.25,
-      "method": "GCash",
-      "status": "completed",
-      "date": "Sep 12, 2024",
-      "referenceNumber": "GC240912001",
-    },
-    {
-      "id": "PAY-2024-002",
-      "amount": 1095.50,
-      "method": "Bank Transfer",
-      "status": "completed",
-      "date": "Aug 15, 2024",
-      "referenceNumber": "BT240815002",
-    },
-    {
-      "id": "PAY-2024-001",
-      "amount": 1250.00,
-      "method": "Over the Counter",
-      "status": "completed",
-      "date": "Jul 18, 2024",
-      "referenceNumber": "OTC240718003",
-    },
-  ];
+        // Load bill data
+        final billResult = await BackendApiService.getLatestAmountDue(userId);
+        if (billResult['success'] != false) {
+          _billData = {
+            "id": billResult['bill_id']?.toString() ?? 'N/A',
+            "amount": billResult['amount_due'] ?? 0.0,
+            "status": "pending", // Default status
+            "dueDate": "TBD", // Not available in API
+            "billingPeriod": "Current Period", // Not available
+            "accountNumber": _userData!['meter_number'] ?? 'N/A',
+            "customerName": _userData!['full_name'] ?? 'Unknown',
+          };
+        }
+
+        // Load meter data
+        final meterResult =
+            await BackendApiService.getLatestMeterReading(userId);
+        if (meterResult['success'] != false) {
+          _meterData = {
+            "currentReading":
+                double.tryParse(meterResult['reading'].toString()) ?? 0.0,
+            "previousReading": 0.0, // Not available
+            "readingDate": DateTime.now().toString().split(' ')[0],
+            "meterNumber": _userData!['meter_number'] ?? 'N/A',
+            "photos": [], // Not available in API
+          };
+        }
+
+        // Load payments if bill exists
+        if (_billData != null && billResult['bill_id'] != null) {
+          final paymentsResult = await PaymentApiService.getPaymentsByBillId(
+              billResult['bill_id']);
+          if (paymentsResult['success'] == true) {
+            final payments = paymentsResult['data'] as List<dynamic>? ?? [];
+            _paymentHistory = payments
+                .map((p) => {
+                      "id": p['id']?.toString() ?? 'N/A',
+                      "amount":
+                          double.tryParse(p['amount_paid'].toString()) ?? 0.0,
+                      "method": p['payment_method'] ?? 'Unknown',
+                      "status": 'completed',
+                      "date": p['payment_date'] ??
+                          DateTime.now().toString().split(' ')[0],
+                      "referenceNumber": p['id']?.toString() ?? 'N/A',
+                    })
+                .toList();
+          }
+        }
+
+        // Mock consumption data for now
+        _consumptionData = [
+          {"month": "May", "consumption": 22},
+          {"month": "Jun", "consumption": 28},
+          {"month": "Jul", "consumption": 35},
+          {"month": "Aug", "consumption": 31},
+          {"month": "Sep", "consumption": 26},
+          {"month": "Oct", "consumption": 25},
+        ];
+
+        // Mock charges for now
+        _charges = [
+          {
+            "name": "Water Bill",
+            "description": "Current charges",
+            "amount": _billData?['amount'] ?? 0.0,
+            "fullDescription": "Outstanding water bill amount",
+          },
+        ];
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading bill data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -180,26 +167,30 @@ class _BillDetailsState extends State<BillDetails> {
       ),
       body: _isLoading
           ? _buildLoadingState(context, isDark)
-          : RefreshIndicator(
-              onRefresh: _refreshBillData,
-              color: isDark ? AppTheme.primaryDark : AppTheme.primaryLight,
-              backgroundColor: isDark ? AppTheme.cardDark : AppTheme.cardLight,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: SafeArea(
-                  child: Column(
-                    children: [
-                      BillHeaderCard(billData: _billData),
-                      MeterReadingSection(meterData: _meterData),
-                      ConsumptionChart(consumptionData: _consumptionData),
-                      ChargesBreakdown(charges: _charges),
-                      PaymentHistorySection(paymentHistory: _paymentHistory),
-                      SizedBox(height: 20.h), // Space for bottom buttons
-                    ],
+          : _billData == null || _meterData == null
+              ? _buildErrorState(context, isDark)
+              : RefreshIndicator(
+                  onRefresh: _refreshBillData,
+                  color: isDark ? AppTheme.primaryDark : AppTheme.primaryLight,
+                  backgroundColor:
+                      isDark ? AppTheme.cardDark : AppTheme.cardLight,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SafeArea(
+                      child: Column(
+                        children: [
+                          BillHeaderCard(billData: _billData!),
+                          MeterReadingSection(meterData: _meterData!),
+                          ConsumptionChart(consumptionData: _consumptionData),
+                          ChargesBreakdown(charges: _charges),
+                          PaymentHistorySection(
+                              paymentHistory: _paymentHistory),
+                          SizedBox(height: 20.h), // Space for bottom buttons
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
       bottomNavigationBar: _buildBottomActions(context, isDark),
     );
   }
@@ -220,6 +211,35 @@ class _BillDetailsState extends State<BillDetails> {
                       ? AppTheme.textSecondaryDark
                       : AppTheme.textSecondaryLight,
                 ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 48,
+            color: isDark ? AppTheme.errorDark : AppTheme.errorLight,
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            'Failed to load bill details',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: isDark
+                      ? AppTheme.textSecondaryDark
+                      : AppTheme.textSecondaryLight,
+                ),
+          ),
+          SizedBox(height: 2.h),
+          ElevatedButton(
+            onPressed: _loadBillData,
+            child: Text('Retry'),
           ),
         ],
       ),
@@ -269,9 +289,9 @@ class _BillDetailsState extends State<BillDetails> {
                           : AppTheme.onPrimaryLight,
                       size: 20,
                     ),
-                    SizedBox(width: 2.w),
+                    SizedBox(width: 16),
                     Text(
-                      'Pay Now - ₱${_billData["amount"].toStringAsFixed(2)}',
+                      'Pay Now - ₱${_billData!["amount"].toStringAsFixed(2)}',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             color: isDark
                                 ? AppTheme.onPrimaryDark
@@ -435,18 +455,18 @@ class _BillDetailsState extends State<BillDetails> {
     HapticFeedback.selectionClick();
 
     final billSummary = '''
-AquaPay - Water Bill Summary
+Anopog - Water Bill Summary
 
-Account: ${_billData["accountNumber"]}
-Customer: ${_billData["customerName"]}
-Billing Period: ${_billData["billingPeriod"]}
-Amount Due: ₱${_billData["amount"].toStringAsFixed(2)}
-Due Date: ${_billData["dueDate"]}
-Status: ${(_billData["status"] as String).toUpperCase()}
+Account: ${_billData!["accountNumber"]}
+Customer: ${_billData!["customerName"]}
+Billing Period: ${_billData!["billingPeriod"]}
+Amount Due: ₱${_billData!["amount"].toStringAsFixed(2)}
+Due Date: ${_billData!["dueDate"]}
+Status: ${(_billData!["status"] as String).toUpperCase()}
 
-Water Consumption: ${(_meterData["currentReading"] as int) - (_meterData["previousReading"] as int)} m³
+Water Consumption: ${(_meterData!["currentReading"] as double).toInt()} m³
 
-Download the AquaPay app for easy bill payments and account management.
+Download the Anopog app for easy bill payments and account management.
     ''';
 
     // In a real app, this would use the share plugin

@@ -56,7 +56,7 @@ class NotificationCardWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isRead = notification['isRead'] as bool? ?? false;
     final String category = notification['category'] as String? ?? 'general';
-    final String sender = notification['sender'] as String? ?? 'AquaPay';
+    final String sender = notification['sender'] as String? ?? 'Anopog';
     final String subject = notification['subject'] as String? ?? '';
     final String preview = notification['preview'] as String? ?? '';
     final DateTime timestamp =

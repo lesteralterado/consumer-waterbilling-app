@@ -141,7 +141,7 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
           content: Text(
-            'Unable to connect to AquaPay services. Please check your internet connection and try again.',
+            'Unable to connect to Anopog services. Please check your internet connection and try again.',
             style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
               color: AppTheme.lightTheme.colorScheme.onSurface,
             ),
@@ -207,43 +207,88 @@ class _SplashScreenState extends State<SplashScreen>
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // App Logo
-                              Container(
-                                width: 25.w,
-                                height: 25.w,
-                                decoration: BoxDecoration(
-                                  color:
-                                      AppTheme.lightTheme.colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(20.0),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.2),
-                                      blurRadius: 20.0,
-                                      offset: const Offset(0, 10),
+                              // App Logo with Pulse Animation
+                              TweenAnimationBuilder<double>(
+                                tween: Tween<double>(begin: 0.95, end: 1.05),
+                                duration: const Duration(milliseconds: 1500),
+                                curve: Curves.easeInOut,
+                                builder: (context, scale, child) {
+                                  return Transform.scale(
+                                    scale: scale,
+                                    child: Container(
+                                      width: 45.w,
+                                      height: 45.w,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.15),
+                                            blurRadius: 30.0,
+                                            spreadRadius: 5.0,
+                                            offset: const Offset(0, 10),
+                                          ),
+                                          BoxShadow(
+                                            color: AppTheme
+                                                .lightTheme.colorScheme.primary
+                                                .withValues(alpha: 0.3),
+                                            blurRadius: 40.0,
+                                            spreadRadius: -5.0,
+                                          ),
+                                        ],
+                                      ),
+                                      padding: EdgeInsets.all(4.w),
+                                      child: ClipOval(
+                                        child: Image.asset(
+                                          'assets/images/anopog_logo.png',
+                                          fit: BoxFit.contain,
+                                          errorBuilder:
+                                              (context, error, stackTrace) {
+                                            // Fallback to icon if image fails to load
+                                            return Center(
+                                              child: Icon(
+                                                Icons.water_drop_rounded,
+                                                size: 30.w,
+                                                color: AppTheme.lightTheme
+                                                    .colorScheme.primary,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
                                     ),
-                                  ],
-                                ),
-                                child: Center(
-                                  child: CustomIconWidget(
-                                    iconName: 'water_drop',
-                                    color:
-                                        AppTheme.lightTheme.colorScheme.primary,
-                                    size: 12.w,
-                                  ),
-                                ),
+                                  );
+                                },
+                                onEnd: () {
+                                  // Create infinite pulse effect
+                                  if (mounted && _isLoading) {
+                                    setState(() {});
+                                  }
+                                },
                               ),
-                              SizedBox(height: 3.h),
-                              // App Name
-                              Text(
-                                'AquaPay',
-                                style: AppTheme
-                                    .lightTheme.textTheme.headlineLarge
-                                    ?.copyWith(
-                                  color:
-                                      AppTheme.lightTheme.colorScheme.onPrimary,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1.2,
+                              SizedBox(height: 4.h),
+                              // App Name with Shimmer Effect
+                              ShaderMask(
+                                shaderCallback: (bounds) {
+                                  return LinearGradient(
+                                    colors: [
+                                      Colors.white.withValues(alpha: 0.8),
+                                      Colors.white,
+                                      Colors.white.withValues(alpha: 0.8),
+                                    ],
+                                  ).createShader(bounds);
+                                },
+                                child: Text(
+                                  'ANOPOG',
+                                  style: AppTheme
+                                      .lightTheme.textTheme.headlineLarge
+                                      ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 32.sp,
+                                    letterSpacing: 2.0,
+                                  ),
                                 ),
                               ),
                               SizedBox(height: 1.h),
@@ -252,10 +297,10 @@ class _SplashScreenState extends State<SplashScreen>
                                 'Water Utility Made Simple',
                                 style: AppTheme.lightTheme.textTheme.bodyLarge
                                     ?.copyWith(
-                                  color: AppTheme
-                                      .lightTheme.colorScheme.onPrimary
-                                      .withValues(alpha: 0.8),
-                                  letterSpacing: 0.5,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  fontSize: 14.sp,
+                                  letterSpacing: 1.0,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -316,7 +361,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Column(
                   children: [
                     Text(
-                      'Powered by AquaPay Solutions',
+                      'Powered by ANOPOG Solutions',
                       style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
                         color: AppTheme.lightTheme.colorScheme.onPrimary
                             .withValues(alpha: 0.7),

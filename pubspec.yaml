@@ -1,4 +1,4 @@
-name: aquapay
+name: Anopog
 description: A new Flutter project.
 publish_to: none
 version: 1.0.0+1
@@ -9,12 +9,12 @@ environment:
 dependencies:
   flutter:       # CRITICAL: Required for every Flutter project - DO NOT REMOVE
     sdk: flutter # CRITICAL: Required for every Flutter project - DO NOT REMOVE
-    http: ^1.1.0
   
   # CRITICAL: Core UI and responsive design - DO NOT REMOVE OR MODIFY
+  http: ^0.13.6              # Required for HTTP requests
   sizer: ^2.0.15              # Required for responsive design system
   flutter_svg: ^2.0.9        # Required for SVG icon support
-  google_fonts: ^6.1.0       # Required for typography (replaces local fonts)
+  google_fonts: ^4.0.4       # Required for typography (replaces local fonts)
   shared_preferences: ^2.2.2 # Required for local data storage
   web: ^1.1.1
   
@@ -32,11 +32,15 @@ dependencies:
   path_provider: ^2.1.2
   universal_html: ^2.2.4
   flutter_haptic_feedback: ^1.0.1
+  paymongo_sdk: ^1.7.0
+  firebase_core: ^3.6.0
+  firebase_messaging: ^15.1.3
 
 dev_dependencies:
   flutter_test:    # CRITICAL: Required for Flutter project testing - DO NOT REMOVE
     sdk: flutter   # CRITICAL: Required for Flutter project testing - DO NOT REMOVE
   flutter_lints: ^5.0.0 # CRITICAL: Required for code quality - DO NOT REMOVE
+  flutter_launcher_icons: ^0.13.1 # For generating app icons
 
 flutter:
   uses-material-design: true # CRITICAL: Required for Material icon font - DO NOT REMOVE
@@ -50,3 +54,12 @@ flutter:
   # CRITICAL FONTS RULE: 
   # - THIS PROJECT USES GOOGLE FONTS INSTEAD OF LOCAL FONTS
   # - DO NOT ADD ANY LOCAL FONTS SECTION OR FONT FILES
+
+# Flutter Launcher Icons Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/logo.png"
+  remove_alpha_ios: true

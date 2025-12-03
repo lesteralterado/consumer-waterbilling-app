@@ -1,20 +1,16 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sizer/sizer.dart';
-import 'package:http/http.dart' as http; // Add this Line
 
 import '../../core/app_export.dart';
+import '../../services/auth_api_service.dart';
+import '../../services/fcm_service.dart';
 
 class LoginScreen extends StatefulWidget {
-
-  // IMPORTANT: Change this to your computer's IP address
-  // Find it by running 'ipconfig' (Windows) or 'ifconfig' (Mac/Linux)
-  final String apiUrl = 'http://172.26.208.1:3000/api/login'; 
-
   const LoginScreen({Key? key}) : super(key: key);
 
   @override
@@ -40,13 +36,6 @@ class _LoginScreenState extends State<LoginScreen>
   late Animation<double> _logoAnimation;
   late Animation<Offset> _formSlideAnimation;
   late Animation<double> _formFadeAnimation;
-
-  // Mock credentials for demonstration
-  final Map<String, String> _mockCredentials = {
-    'admin@aquapay.ph': 'admin123',
-    'customer@aquapay.ph': 'customer123',
-    'user@aquapay.ph': 'user123',
-  };
 
   @override
   void initState() {
@@ -147,7 +136,7 @@ class _LoginScreenState extends State<LoginScreen>
   void _validateUsername(String value) {
     setState(() {
       if (value.isEmpty) {
-        _usernameError = 'Username or email is required';
+        _usernameError = 'Anopog is required';
       } else if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value) &&
           value.length < 3) {
         _usernameError = 'Enter a valid email or username';
@@ -184,17 +173,32 @@ class _LoginScreenState extends State<LoginScreen>
     });
 
     try {
-      // Simulate network delay
-      await Future.delayed(const Duration(milliseconds: 1500));
-
       final username = _usernameController.text.trim();
       final password = _passwordController.text;
 
-      // Check mock credentials
-      if (_mockCredentials.containsKey(username) &&
-          _mockCredentials[username] == password) {
+      final result = await AuthApiService.login(
+        username: username,
+        password: password,
+      );
+
+      if (result['success']) {
+        // Save user data
+        final user = result['user'];
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_data', json.encode(user));
+
         // Save credentials for future use
         await _saveCredentials();
+
+        // Register device token for push notifications
+        final deviceToken = await FCMService.getDeviceToken();
+        if (deviceToken != null) {
+          final userId = user['id'].toString();
+          await FCMService.registerDeviceToken(
+            userId: userId,
+            deviceToken: deviceToken,
+          );
+        }
 
         // Success haptic feedback
         if (!kIsWeb) {
@@ -203,7 +207,7 @@ class _LoginScreenState extends State<LoginScreen>
 
         // Show success message
         Fluttertoast.showToast(
-          msg: "Login successful! Welcome to AquaPay",
+          msg: "Login successful! Welcome to ANOPOG",
           toastLength: Toast.LENGTH_SHORT,
           gravity: ToastGravity.BOTTOM,
           backgroundColor: AppTheme.lightTheme.colorScheme.secondary,
@@ -213,8 +217,9 @@ class _LoginScreenState extends State<LoginScreen>
         // Navigate to dashboard
         Navigator.pushReplacementNamed(context, '/dashboard');
       } else {
-        // Show error for invalid credentials
-        _showErrorMessage('Invalid username or password. Please try again.');
+        // Show error message
+        _showErrorMessage(
+            result['message'] ?? 'Login failed. Please try again.');
       }
     } catch (e) {
       _showErrorMessage(
@@ -233,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen>
 
     try {
       final isAuthenticated = await _localAuth.authenticate(
-        localizedReason: 'Please authenticate to access your AquaPay account',
+        localizedReason: 'Please authenticate to access your ANOPOG account',
         options: const AuthenticationOptions(
           biometricOnly: true,
           stickyAuth: true,
@@ -310,7 +315,7 @@ class _LoginScreenState extends State<LoginScreen>
             style: AppTheme.lightTheme.textTheme.titleLarge,
           ),
           content: Text(
-            'New customer registration is available at our office or through our website. Please visit your nearest AquaPay service center.',
+            'New customer registration is available at our office or through our website. Please visit your nearest ANOPOG service center.',
             style: AppTheme.lightTheme.textTheme.bodyMedium,
           ),
           actions: [
@@ -354,11 +359,11 @@ class _LoginScreenState extends State<LoginScreen>
                     MediaQuery.of(context).padding.bottom,
               ),
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6.w),
+                padding: EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(height: 8.h),
+                    SizedBox(height: 40),
 
                     // Logo Section
                     AnimatedBuilder(
@@ -369,12 +374,11 @@ class _LoginScreenState extends State<LoginScreen>
                           child: Column(
                             children: [
                               Container(
-                                width: 25.w,
-                                height: 25.w,
+                                width: 100,
+                                height: 100,
                                 decoration: BoxDecoration(
-                                  color:
-                                      AppTheme.lightTheme.colorScheme.primary,
-                                  borderRadius: BorderRadius.circular(4.w),
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
                                       color: AppTheme
@@ -385,32 +389,44 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                   ],
                                 ),
-                                child: Center(
-                                  child: CustomIconWidget(
-                                    iconName: 'water_drop',
-                                    color: Colors.white,
-                                    size: 12.w,
+                                padding: EdgeInsets.all(8),
+                                child: ClipOval(
+                                  child: Image.asset(
+                                    'assets/images/logo.png',
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Center(
+                                        child: Icon(
+                                          Icons.water_drop_rounded,
+                                          size: 60,
+                                          color: AppTheme
+                                              .lightTheme.colorScheme.primary,
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
-                              SizedBox(height: 3.h),
+                              SizedBox(height: 24),
                               Text(
-                                'AquaPay',
+                                'ANOPOG',
                                 style: AppTheme
                                     .lightTheme.textTheme.headlineMedium
                                     ?.copyWith(
                                   color:
                                       AppTheme.lightTheme.colorScheme.primary,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.5,
                                 ),
                               ),
-                              SizedBox(height: 1.h),
+                              SizedBox(height: 8),
                               Text(
-                                'Water Utility Billing',
+                                'ANOPOG Water Billing',
                                 style: AppTheme.lightTheme.textTheme.bodyMedium
                                     ?.copyWith(
                                   color: AppTheme
                                       .lightTheme.colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -419,7 +435,7 @@ class _LoginScreenState extends State<LoginScreen>
                       },
                     ),
 
-                    SizedBox(height: 6.h),
+                    SizedBox(height: 48),
 
                     // Form Section
                     SlideTransition(
@@ -436,7 +452,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 decoration: BoxDecoration(
                                   color:
                                       AppTheme.lightTheme.colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(2.w),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: _usernameError != null
                                         ? AppTheme.lightTheme.colorScheme.error
@@ -452,19 +468,15 @@ class _LoginScreenState extends State<LoginScreen>
                                   onChanged: _validateUsername,
                                   decoration: InputDecoration(
                                     hintText: 'Username or Email',
-                                    prefixIcon: Padding(
-                                      padding: EdgeInsets.all(3.w),
-                                      child: CustomIconWidget(
-                                        iconName: 'person',
-                                        color: AppTheme.lightTheme.colorScheme
-                                            .onSurfaceVariant,
-                                        size: 6.w,
-                                      ),
+                                    prefixIcon: Icon(
+                                      Icons.person_outline,
+                                      color: AppTheme.lightTheme.colorScheme
+                                          .onSurfaceVariant,
                                     ),
                                     border: InputBorder.none,
                                     contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 4.w,
-                                      vertical: 4.h,
+                                      horizontal: 16,
+                                      vertical: 16,
                                     ),
                                   ),
                                   style:
@@ -473,9 +485,9 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
 
                               if (_usernameError != null) ...[
-                                SizedBox(height: 1.h),
+                                SizedBox(height: 8),
                                 Padding(
-                                  padding: EdgeInsets.only(left: 2.w),
+                                  padding: EdgeInsets.only(left: 8),
                                   child: Text(
                                     _usernameError!,
                                     style: AppTheme
@@ -488,14 +500,14 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ],
 
-                              SizedBox(height: 3.h),
+                              SizedBox(height: 16),
 
                               // Password Field
                               Container(
                                 decoration: BoxDecoration(
                                   color:
                                       AppTheme.lightTheme.colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(2.w),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: _passwordError != null
                                         ? AppTheme.lightTheme.colorScheme.error
@@ -512,14 +524,10 @@ class _LoginScreenState extends State<LoginScreen>
                                   onFieldSubmitted: (_) => _handleLogin(),
                                   decoration: InputDecoration(
                                     hintText: 'Password',
-                                    prefixIcon: Padding(
-                                      padding: EdgeInsets.all(3.w),
-                                      child: CustomIconWidget(
-                                        iconName: 'lock',
-                                        color: AppTheme.lightTheme.colorScheme
-                                            .onSurfaceVariant,
-                                        size: 6.w,
-                                      ),
+                                    prefixIcon: Icon(
+                                      Icons.lock_outline,
+                                      color: AppTheme.lightTheme.colorScheme
+                                          .onSurfaceVariant,
                                     ),
                                     suffixIcon: IconButton(
                                       onPressed: () {
@@ -528,19 +536,18 @@ class _LoginScreenState extends State<LoginScreen>
                                               !_isPasswordVisible;
                                         });
                                       },
-                                      icon: CustomIconWidget(
-                                        iconName: _isPasswordVisible
-                                            ? 'visibility_off'
-                                            : 'visibility',
+                                      icon: Icon(
+                                        _isPasswordVisible
+                                            ? Icons.visibility_off
+                                            : Icons.visibility,
                                         color: AppTheme.lightTheme.colorScheme
                                             .onSurfaceVariant,
-                                        size: 6.w,
                                       ),
                                     ),
                                     border: InputBorder.none,
                                     contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 4.w,
-                                      vertical: 4.h,
+                                      horizontal: 16,
+                                      vertical: 16,
                                     ),
                                   ),
                                   style:
@@ -549,9 +556,9 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
 
                               if (_passwordError != null) ...[
-                                SizedBox(height: 1.h),
+                                SizedBox(height: 8),
                                 Padding(
-                                  padding: EdgeInsets.only(left: 2.w),
+                                  padding: EdgeInsets.only(left: 8),
                                   child: Text(
                                     _passwordError!,
                                     style: AppTheme
@@ -564,7 +571,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ],
 
-                              SizedBox(height: 2.h),
+                              SizedBox(height: 16),
 
                               // Forgot Password Link
                               Align(
@@ -584,11 +591,11 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ),
 
-                              SizedBox(height: 4.h),
+                              SizedBox(height: 32),
 
                               // Login Button
                               SizedBox(
-                                height: 7.h,
+                                height: 56,
                                 child: ElevatedButton(
                                   onPressed: _isLoading || !_isFormValid
                                       ? null
@@ -598,14 +605,14 @@ class _LoginScreenState extends State<LoginScreen>
                                         AppTheme.lightTheme.colorScheme.primary,
                                     foregroundColor: Colors.white,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(2.w),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                     elevation: 2,
                                   ),
                                   child: _isLoading
                                       ? SizedBox(
-                                          width: 6.w,
-                                          height: 6.w,
+                                          width: 24,
+                                          height: 24,
                                           child: CircularProgressIndicator(
                                             strokeWidth: 2,
                                             valueColor:
@@ -629,9 +636,9 @@ class _LoginScreenState extends State<LoginScreen>
                               // Biometric Login Button
                               if (_isBiometricAvailable &&
                                   _isBiometricEnabled) ...[
-                                SizedBox(height: 3.h),
+                                SizedBox(height: 24),
                                 SizedBox(
-                                  height: 7.h,
+                                  height: 56,
                                   child: OutlinedButton.icon(
                                     onPressed: _isLoading
                                         ? null
@@ -642,15 +649,13 @@ class _LoginScreenState extends State<LoginScreen>
                                             .lightTheme.colorScheme.primary,
                                       ),
                                       shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(2.w),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
-                                    icon: CustomIconWidget(
-                                      iconName: 'fingerprint',
+                                    icon: Icon(
+                                      Icons.fingerprint,
                                       color: AppTheme
                                           .lightTheme.colorScheme.primary,
-                                      size: 6.w,
                                     ),
                                     label: Text(
                                       'Use Biometric',
@@ -666,7 +671,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ],
 
-                              SizedBox(height: 6.h),
+                              SizedBox(height: 48),
 
                               // Register Link
                               Row(
@@ -702,7 +707,7 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
 
-                    SizedBox(height: 4.h),
+                    SizedBox(height: 32),
                   ],
                 ),
               ),

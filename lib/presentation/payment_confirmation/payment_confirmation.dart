@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
@@ -21,54 +22,87 @@ class PaymentConfirmation extends StatefulWidget {
 class _PaymentConfirmationState extends State<PaymentConfirmation> {
   bool _isLoading = false;
 
-  // Mock transaction data
-  final Map<String, dynamic> _transactionData = {
-    'amount': 1250.75,
-    'paymentMethod': 'GCash',
-    'transactionId': 'TXN-2025102807551234',
-    'timestamp': DateTime.now(),
-    'reference': 'GC-REF-789456123',
-    'status': 'completed',
-  };
-
-  // Mock bill data
-  final Map<String, dynamic> _billData = {
-    'accountNumber': 'WB-2024-001234',
-    'billingPeriod': 'September 2024',
-    'dueDate': DateTime(2024, 10, 15),
-    'previousBalance': 850.50,
-    'currentCharges': 400.25,
-    'totalAmount': 1250.75,
-  };
-
-  // Mock payment method data
-  final Map<String, dynamic> _paymentMethodData = {
-    'type': 'gcash',
-    'methodName': 'GCash Wallet',
-    'mobileNumber': '+639171234567',
-    'transactionReference': 'GC-789456123',
-    'status': 'completed',
-  };
-
-  // Mock next bill data
-  final Map<String, dynamic> _nextBillData = {
-    'currentBalance': 0.00,
-    'nextDueDate': DateTime(2024, 11, 15),
-    'nextBillDate': DateTime(2024, 10, 25),
-    'estimatedAmount': 425.00,
-  };
-
-  // Mock receipt data
-  final Map<String, dynamic> _receiptData = {
-    'receiptNumber': 'RCP-2025102807551234',
-    'generatedAt': DateTime.now(),
-    'format': 'PDF',
-  };
+  late Map<String, dynamic> _transactionData;
+  late Map<String, dynamic> _billData;
+  late Map<String, dynamic> _paymentMethodData;
+  late Map<String, dynamic> _nextBillData;
+  late Map<String, dynamic> _receiptData;
 
   @override
   void initState() {
     super.initState();
     _initializeConfirmation();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
+    if (args != null) {
+      // Extract real data from navigation arguments
+      _transactionData = {
+        'amount': args['amountPaid'] ?? 0.0,
+        'paymentMethod': args['paymentMethod'] ?? 'Unknown',
+        'transactionId': args['paymentData']?['id'] ??
+            'TXN-${DateTime.now().millisecondsSinceEpoch}',
+        'timestamp': DateTime.now(),
+        'reference': args['paymentData']?['reference'] ?? null,
+        'status': 'completed',
+      };
+
+      _billData = {
+        'accountNumber': 'WB-2024-${args['billId'] ?? '000000'}',
+        'billingPeriod': DateTime.now().month == 1
+            ? 'December ${DateTime.now().year - 1}'
+            : '${_getMonthName(DateTime.now().month - 1)} ${DateTime.now().year}',
+        'dueDate': DateTime.now().add(const Duration(days: 15)),
+        'previousBalance': 0.0, // This would come from backend
+        'currentCharges': args['amountPaid'] ?? 0.0,
+        'totalAmount': args['amountPaid'] ?? 0.0,
+      };
+
+      _paymentMethodData = {
+        'type': args['paymentMethod']?.toLowerCase() ?? 'unknown',
+        'methodName': args['paymentMethod'] ?? 'Unknown Payment Method',
+        'mobileNumber': '+639XXXXXXXXX', // This would come from user data
+        'transactionReference': args['paymentData']?['reference'] ??
+            'REF-${DateTime.now().millisecondsSinceEpoch}',
+        'status': 'completed',
+      };
+
+      _nextBillData = {
+        'currentBalance': 0.00,
+        'nextDueDate': DateTime.now().add(const Duration(days: 30)),
+        'nextBillDate': DateTime.now().add(const Duration(days: 15)),
+        'estimatedAmount': 425.00, // This would come from backend
+      };
+
+      _receiptData = {
+        'receiptNumber': 'RCP-${DateTime.now().millisecondsSinceEpoch}',
+        'generatedAt': DateTime.now(),
+        'format': 'PDF',
+      };
+    }
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+    return months[month - 1];
   }
 
   void _initializeConfirmation() {
@@ -89,8 +123,8 @@ class _PaymentConfirmationState extends State<PaymentConfirmation> {
         'apikey': 'd403ca9a50e2a6840ccf3b0a5cbfe949',
         'number': '+639171234567',
         'message':
-            'AquaPay: Your water bill payment of ₱${_transactionData['amount'].toStringAsFixed(2)} has been successfully processed. Transaction ID: ${_transactionData['transactionId']}',
-        'sendername': 'AquaPay'
+            'Anopog: Your water bill payment of ₱${_transactionData['amount'].toStringAsFixed(2)} has been successfully processed. Transaction ID: ${_transactionData['transactionId']}',
+        'sendername': 'Anopog'
       };
 
       print('Notification sent: ${notificationData['message']}');
@@ -335,8 +369,19 @@ class _PaymentConfirmationState extends State<PaymentConfirmation> {
     );
   }
 
-  void _returnToDashboard() {
+  void _returnToDashboard() async {
     HapticFeedback.lightImpact();
+    // ignore: avoid_print
+    print(
+        'DEBUG: Returning to dashboard from payment confirmation at ${DateTime.now()}');
+
+    // Mark payment as successful to update bill state
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('last_payment_amount', _transactionData['amount']);
+    await prefs.setString(
+        'last_payment_time', DateTime.now().toIso8601String());
+    // ignore: avoid_print
+    print('DEBUG: Set last_payment_amount to ${_transactionData['amount']}');
 
     setState(() {
       _isLoading = true;

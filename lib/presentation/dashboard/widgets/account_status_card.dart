@@ -1,29 +1,64 @@
 import 'package:flutter/material.dart';
-import 'package:sizer/sizer.dart';
-
 import '../../../core/app_export.dart';
 import '../../../theme/app_theme.dart';
+import '../../../services/backend_api_service.dart';
 
-class AccountStatusCard extends StatelessWidget {
+class AccountStatusCard extends StatefulWidget {
   final String customerName;
   final String accountNumber;
   final String status;
-  final double currentBill;
-  final DateTime dueDate;
-  final String meterReading;
+  final double? currentBill; // optional - if null, will be fetched
+  final DateTime? dueDate; // optional
+  final String? meterReading; // optional - if null, will be fetched
+  final int? userId; // optional: user id used to fetch remote data
 
   const AccountStatusCard({
     Key? key,
     required this.customerName,
     required this.accountNumber,
     required this.status,
-    required this.currentBill,
-    required this.dueDate,
-    required this.meterReading,
+    this.currentBill,
+    this.dueDate,
+    this.meterReading,
+    this.userId,
   }) : super(key: key);
 
+  @override
+  State<AccountStatusCard> createState() => _AccountStatusCardState();
+}
+
+class _AccountStatusCardState extends State<AccountStatusCard> {
+  double? _fetchedAmount;
+  String? _fetchedReading;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.userId != null) {
+      _fetchRemoteData(widget.userId!);
+    }
+  }
+
+  Future<void> _fetchRemoteData(int userId) async {
+    setState(() => _loading = true);
+    try {
+      final billResp = await BackendApiService.getLatestAmountDue(userId);
+      if (billResp['success'] == true) {
+        _fetchedAmount = billResp['amount_due'] as double?;
+      }
+
+      final mrResp = await BackendApiService.getLatestMeterReading(userId);
+      if (mrResp['success'] == true) {
+        _fetchedReading = (mrResp['reading'] as String?) ?? '';
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   Color _getStatusColor() {
-    switch (status.toLowerCase()) {
+    switch (widget.status.toLowerCase()) {
       case 'current':
         return AppTheme.lightTheme.colorScheme.secondary;
       case 'due soon':
@@ -48,16 +83,19 @@ class AccountStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final displayedAmount = (_fetchedAmount ?? widget.currentBill) ?? 0.0;
+    final displayedReading = (_fetchedReading ?? widget.meterReading) ?? '';
+
     return Container(
       width: double.infinity,
-      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
-      padding: EdgeInsets.all(4.w),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.lightTheme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -74,15 +112,14 @@ class AccountStatusCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Hello, $customerName',
-                      style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                      'Hello, ${widget.customerName}',
+                      style: AppTheme.lightTheme.textTheme.titleLarge
+                          ?.copyWith(fontWeight: FontWeight.w600),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    SizedBox(height: 0.5.h),
+                    const SizedBox(height: 6),
                     Text(
-                      'Account: $accountNumber',
+                      'Account: ${widget.accountNumber}',
                       style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                         color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                       ),
@@ -92,13 +129,14 @@ class AccountStatusCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: EdgeInsets.symmetric(horizontal: 3.w, vertical: 1.h),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _getStatusColor().withValues(alpha: 0.1),
+                  color: _getStatusColor().withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  status.toUpperCase(),
+                  widget.status.toUpperCase(),
                   style: AppTheme.lightTheme.textTheme.labelSmall?.copyWith(
                     color: _getStatusColor(),
                     fontWeight: FontWeight.w600,
@@ -107,17 +145,15 @@ class AccountStatusCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 3.h),
+          const SizedBox(height: 16),
           Container(
             width: double.infinity,
-            padding: EdgeInsets.all(4.w),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppTheme.lightTheme.colorScheme.primary
-                  .withValues(alpha: 0.05),
+              color: AppTheme.lightTheme.colorScheme.primary.withOpacity(0.05),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: AppTheme.lightTheme.colorScheme.primary
-                    .withValues(alpha: 0.1),
+                color: AppTheme.lightTheme.colorScheme.primary.withOpacity(0.1),
               ),
             ),
             child: Column(
@@ -129,15 +165,17 @@ class AccountStatusCard extends StatelessWidget {
                     color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                SizedBox(height: 1.h),
+                const SizedBox(height: 8),
                 Text(
-                  _formatCurrency(currentBill),
+                  displayedAmount == 0.0
+                      ? '__ __'
+                      : _formatCurrency(displayedAmount),
                   style: AppTheme.lightTheme.textTheme.headlineMedium?.copyWith(
                     color: AppTheme.lightTheme.colorScheme.primary,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 2.h),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
@@ -152,13 +190,13 @@ class AccountStatusCard extends StatelessWidget {
                                   .lightTheme.colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          SizedBox(height: 0.5.h),
+                          const SizedBox(height: 6),
                           Text(
-                            _formatDate(dueDate),
+                            widget.dueDate != null
+                                ? _formatDate(widget.dueDate!)
+                                : '-',
                             style: AppTheme.lightTheme.textTheme.bodyMedium
-                                ?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
+                                ?.copyWith(fontWeight: FontWeight.w500),
                           ),
                         ],
                       ),
@@ -175,13 +213,13 @@ class AccountStatusCard extends StatelessWidget {
                                   .lightTheme.colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          SizedBox(height: 0.5.h),
+                          const SizedBox(height: 6),
                           Text(
-                            '$meterReading m³',
+                            displayedReading.isNotEmpty
+                                ? '$displayedReading m³'
+                                : '-',
                             style: AppTheme.lightTheme.textTheme.bodyMedium
-                                ?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
+                                ?.copyWith(fontWeight: FontWeight.w500),
                           ),
                         ],
                       ),

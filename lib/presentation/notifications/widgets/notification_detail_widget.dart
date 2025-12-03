@@ -56,7 +56,7 @@ class NotificationDetailWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String category = notification['category'] as String? ?? 'general';
-    final String sender = notification['sender'] as String? ?? 'AquaPay';
+    final String sender = notification['sender'] as String? ?? 'Anopog';
     final String subject = notification['subject'] as String? ?? '';
     final String content = notification['content'] as String? ?? '';
     final DateTime timestamp =
