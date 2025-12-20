@@ -30,7 +30,6 @@ class _PaymentHistoryState extends State<PaymentHistory> {
   Map<String, dynamic> _activeFilters = {};
   List<String> _activeFilterChips = [];
   bool _isLoading = false;
-  bool _isRefreshing = false;
 
   @override
   void initState() {
@@ -160,18 +159,10 @@ class _PaymentHistoryState extends State<PaymentHistory> {
   }
 
   Future<void> _refreshTransactions() async {
-    setState(() {
-      _isRefreshing = true;
-    });
-
     // Simulate network delay
     await Future.delayed(const Duration(seconds: 1));
 
     _loadTransactions();
-
-    setState(() {
-      _isRefreshing = false;
-    });
   }
 
   void _onSearchChanged() {
@@ -533,7 +524,7 @@ class _PaymentHistoryState extends State<PaymentHistory> {
         final bytes = utf8.encode(receiptContent);
         final blob = html.Blob([bytes]);
         final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
+        html.AnchorElement(href: url)
           ..setAttribute("download", filename)
           ..click();
         html.Url.revokeObjectUrl(url);
@@ -608,7 +599,7 @@ Thank you for using Anopog!
         final bytes = utf8.encode(csvContent);
         final blob = html.Blob([bytes]);
         final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
+        html.AnchorElement(href: url)
           ..setAttribute("download", filename)
           ..click();
         html.Url.revokeObjectUrl(url);

@@ -96,13 +96,13 @@ class _PaymongoPaymentState extends State<PaymongoPayment> {
             'paymentMethod': paymentMethod,
             'amountPaid': amount,
             'paymentDate': paymentDate,
-            'paymentData': paymentResult?['data'] ??
+            'paymentData': paymentResult['data'] ??
                 {'id': 'TXN-${DateTime.now().millisecondsSinceEpoch}'},
           },
         );
 
         // Show warning if backend submission failed
-        if (paymentResult?['success'] != true) {
+        if (paymentResult['success'] != true) {
           Future.delayed(const Duration(seconds: 2), () {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(

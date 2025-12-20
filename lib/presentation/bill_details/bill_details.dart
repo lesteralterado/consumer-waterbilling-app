@@ -22,7 +22,6 @@ class BillDetails extends StatefulWidget {
 
 class _BillDetailsState extends State<BillDetails> {
   bool _isLoading = true;
-  bool _isRefreshing = false;
 
   Map<String, dynamic>? _userData;
   Map<String, dynamic>? _billData;
@@ -351,19 +350,11 @@ class _BillDetailsState extends State<BillDetails> {
   }
 
   Future<void> _refreshBillData() async {
-    setState(() {
-      _isRefreshing = true;
-    });
-
     // Simulate API call
     await Future.delayed(const Duration(seconds: 2));
 
     // Provide haptic feedback
     HapticFeedback.lightImpact();
-
-    setState(() {
-      _isRefreshing = false;
-    });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

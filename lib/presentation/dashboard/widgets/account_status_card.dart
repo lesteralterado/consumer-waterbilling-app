@@ -30,7 +30,6 @@ class AccountStatusCard extends StatefulWidget {
 class _AccountStatusCardState extends State<AccountStatusCard> {
   double? _fetchedAmount;
   String? _fetchedReading;
-  bool _loading = false;
 
   @override
   void initState() {
@@ -41,7 +40,6 @@ class _AccountStatusCardState extends State<AccountStatusCard> {
   }
 
   Future<void> _fetchRemoteData(int userId) async {
-    setState(() => _loading = true);
     try {
       final billResp = await BackendApiService.getLatestAmountDue(userId);
       if (billResp['success'] == true) {
@@ -53,7 +51,7 @@ class _AccountStatusCardState extends State<AccountStatusCard> {
         _fetchedReading = (mrResp['reading'] as String?) ?? '';
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() {});
     }
   }
 
@@ -95,7 +93,7 @@ class _AccountStatusCardState extends State<AccountStatusCard> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -132,7 +130,7 @@ class _AccountStatusCardState extends State<AccountStatusCard> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _getStatusColor().withOpacity(0.1),
+                  color: _getStatusColor().withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -150,10 +148,12 @@ class _AccountStatusCardState extends State<AccountStatusCard> {
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppTheme.lightTheme.colorScheme.primary.withOpacity(0.05),
+              color: AppTheme.lightTheme.colorScheme.primary
+                  .withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: AppTheme.lightTheme.colorScheme.primary.withOpacity(0.1),
+                color: AppTheme.lightTheme.colorScheme.primary
+                    .withValues(alpha: 0.1),
               ),
             ),
             child: Column(

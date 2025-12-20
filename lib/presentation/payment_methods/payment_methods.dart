@@ -9,7 +9,6 @@ import '../../services/payment_api_service.dart';
 import '../../services/backend_api_service.dart';
 import './widgets/amount_summary_card.dart';
 import './widgets/payment_method_card.dart';
-import './widgets/saved_payment_methods.dart';
 
 class PaymentMethods extends StatefulWidget {
   const PaymentMethods({Key? key}) : super(key: key);
@@ -217,37 +216,6 @@ class _PaymentMethodsState extends State<PaymentMethods> {
 
   void _calculateTotalAmount() {
     totalAmount = billAmount + convenienceFee;
-  }
-
-  void _deleteSavedMethod(String methodId) {
-    setState(() {
-      savedPaymentMethods.removeWhere((method) => method['id'] == methodId);
-
-      // If the deleted method was selected, clear selection
-      if (selectedPaymentMethodId == methodId) {
-        selectedPaymentMethodId = null;
-        selectedPaymentMethod = null;
-        convenienceFee = 0.0;
-        _calculateTotalAmount();
-      }
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Payment method removed'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _addNewPaymentMethod() {
-    // Navigate to add payment method screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Add new payment method feature coming soon'),
-        duration: Duration(seconds: 2),
-      ),
-    );
   }
 
   Future<void> _proceedToPayment() async {
