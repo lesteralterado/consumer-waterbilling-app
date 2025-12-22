@@ -232,4 +232,31 @@ class PaymentApiService {
       };
     }
   }
+
+  /// Get payment history for a specific user
+  static Future<Map<String, dynamic>> getPaymentsByUserId(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/user/payments/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'success': true,
+          'data': data,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to fetch payment history',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Error: Cannot connect to server - $e',
+      };
+    }
+  }
 }

@@ -2,12 +2,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/app_export.dart';
 import '../../services/backend_api_service.dart';
 import '../../services/payment_api_service.dart';
 import './widgets/account_status_card.dart';
-import './widgets/dashboard_tab_bar.dart';
 import './widgets/quick_actions_widget.dart';
 import './widgets/recent_activity_widget.dart';
 
@@ -19,9 +19,14 @@ class Dashboard extends StatefulWidget {
 }
 
 class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
-  late TabController _tabController;
+  int _currentIndex = 0;
   bool _isRefreshing = false;
   DateTime _lastUpdated = DateTime.now();
+
+  // Animation controllers for tab effects
+  late AnimationController _scaleController;
+  late Animation<double> _scaleAnimation;
+  int _animatingIndex = -1; // Track which tab is being animated
 
   Map<String, dynamic>? _userData;
   Map<String, dynamic>? _latestMeterReading;
@@ -69,13 +74,22 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+
+    // Initialize animation controller for tab tap effects
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.9).animate(
+      CurvedAnimation(parent: _scaleController, curve: Curves.easeInOut),
+    );
+
     _loadData();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _scaleController.dispose();
     super.dispose();
   }
 
@@ -235,21 +249,43 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     });
   }
 
-  void _onTabChanged(int index) {
+  void _onTabChanged(int index) async {
+    // Trigger haptic feedback
+    await HapticFeedback.lightImpact();
+
+    // Trigger scale animation
+    setState(() {
+      _animatingIndex = index;
+    });
+    _scaleController.forward().then((_) {
+      _scaleController.reverse().then((_) {
+        setState(() {
+          _animatingIndex = -1;
+        });
+      });
+    });
+
+    // Update current index after a brief delay for animation
+    Future.delayed(const Duration(milliseconds: 75), () {
+      setState(() {
+        _currentIndex = index;
+      });
+    });
+
     switch (index) {
       case 0:
         // Dashboard - already here
         break;
-      case 1:
-        Navigator.pushNamed(context, '/bill-details');
-        break;
-      case 2:
+      // case 1: // Bills tab commented out
+      //   Navigator.pushNamed(context, '/bill-details');
+      //   break;
+      case 1: // Payments (was case 2)
         Navigator.pushNamed(context, '/payment-history');
         break;
-      case 3:
+      case 2: // Issues (was case 3)
         Navigator.pushNamed(context, '/issue-reporting');
         break;
-      case 4:
+      case 3: // Profile (was case 4)
         // Profile tab - show logout
         _showLogoutDialog();
         break;
@@ -346,25 +382,156 @@ class _DashboardState extends State<Dashboard> with TickerProviderStateMixin {
     }
   }
 
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+      elevation: 4,
+      shadowColor: Colors.black.withValues(alpha: 0.05),
+      title: Row(
+        children: [
+          CustomImageWidget(
+            imageUrl: "assets/images/logo.png",
+            width: 10.w,
+            height: 10.w,
+            fit: BoxFit.cover,
+            semanticLabel:
+                "Anopog logo - stylized water drop with blue gradient background",
+          ),
+          SizedBox(width: 3.w),
+          Expanded(
+            child: Text(
+              'Anopog',
+              style: AppTheme.lightTheme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.lightTheme.colorScheme.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(
+          onPressed: () {
+            Navigator.pushNamed(context, '/notifications');
+          },
+          icon: Stack(
+            children: [
+              CustomIconWidget(
+                iconName: 'notifications',
+                color: AppTheme.lightTheme.colorScheme.onSurface,
+                size: 6.w,
+              ),
+              // Note: unread count logic removed for simplicity, can be added back if needed
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomNavigationBar() {
+    final List<Map<String, dynamic>> tabItems = [
+      {'icon': Icons.home, 'label': 'Dashboard'},
+      {'icon': Icons.payment, 'label': 'Payments'},
+      {'icon': Icons.report_problem, 'label': 'Issues'},
+      {'icon': Icons.person, 'label': 'Profile'},
+    ];
+
+    return Container(
+      height: 10.h,
+      decoration: BoxDecoration(
+        color: AppTheme.lightTheme.colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: List.generate(tabItems.length, (index) {
+          final item = tabItems[index];
+          final isSelected = _currentIndex == index;
+          final isAnimating = _animatingIndex == index;
+
+          return Expanded(
+            child: AnimatedBuilder(
+              animation: _scaleAnimation,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: isAnimating ? _scaleAnimation.value : 1.0,
+                  child: child,
+                );
+              },
+              child: InkWell(
+                onTap: () => _onTabChanged(index),
+                splashColor: AppTheme.lightTheme.colorScheme.primary
+                    .withValues(alpha: 0.1),
+                highlightColor: AppTheme.lightTheme.colorScheme.primary
+                    .withValues(alpha: 0.05),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  padding: EdgeInsets.symmetric(vertical: 1.5.h),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                        width: 6.w,
+                        height: 6.w,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppTheme.lightTheme.colorScheme.primary
+                                  .withValues(alpha: 0.1)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          item['icon'] as IconData,
+                          size: 6.w,
+                          color: isSelected
+                              ? AppTheme.lightTheme.colorScheme.primary
+                              : AppTheme
+                                  .lightTheme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      SizedBox(height: 0.5.h),
+                      AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                        style: TextStyle(
+                          fontSize: 2.5.w,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: isSelected
+                              ? AppTheme.lightTheme.colorScheme.primary
+                              : AppTheme
+                                  .lightTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        child: Text(item['label'] as String),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.lightTheme.scaffoldBackgroundColor,
-      appBar: DashboardTabBar(
-        tabController: _tabController,
-        onTabChanged: _onTabChanged,
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        physics: const NeverScrollableScrollPhysics(),
-        children: [
-          _buildDashboardContent(),
-          Container(), // Bills placeholder
-          Container(), // Payments placeholder
-          Container(), // Issues placeholder
-          Container(), // Profile placeholder
-        ],
-      ),
+      appBar: _buildAppBar(),
+      body: _buildDashboardContent(),
+      bottomNavigationBar: _buildBottomNavigationBar(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _onPayBill,
         backgroundColor: AppTheme.lightTheme.colorScheme.primary,

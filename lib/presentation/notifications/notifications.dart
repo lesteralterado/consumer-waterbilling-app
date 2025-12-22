@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
@@ -6,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
 import '../../services/notification_api_service.dart';
+import '../../services/issue_reporting_api_service.dart';
+import '../../services/fcm_service.dart';
 import './widgets/notification_card_widget.dart';
 import './widgets/notification_detail_widget.dart';
 import './widgets/notification_empty_state_widget.dart';
@@ -34,6 +37,8 @@ class _NotificationsState extends State<Notifications>
   bool _isRefreshing = false;
   String? _errorMessage;
   String? _userId;
+
+  StreamSubscription<Map<String, dynamic>>? _fcmSubscription;
 
   final List<String> _categories = [
     'all',
@@ -187,6 +192,13 @@ class _NotificationsState extends State<Notifications>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadUserDataAndNotifications();
+
+    // Listen to FCM messages
+    _fcmSubscription = FCMService.onMessageReceived.listen((notification) {
+      setState(() {
+        _allNotifications.insert(0, notification); // Add to top
+      });
+    });
   }
 
   Future<void> _loadUserDataAndNotifications() async {
@@ -201,6 +213,12 @@ class _NotificationsState extends State<Notifications>
 
         // Fetch notifications from API
         await _fetchNotifications();
+
+        // Fetch issue reports
+        await _fetchIssueReports();
+
+        // Load FCM notifications from SharedPreferences
+        await _loadFCMNotifications();
       } else {
         setState(() {
           _errorMessage = 'User not logged in';
@@ -229,28 +247,45 @@ class _NotificationsState extends State<Notifications>
       );
 
       if (result['success']) {
-        final notifications = result['notifications'] as List<dynamic>;
-        setState(() {
-          _allNotifications = notifications.map((notification) {
-            // Transform backend notification format to match UI expectations
-            return {
-              'id': notification['id'] ?? 0,
-              'sender': notification['sender'] ?? 'Anopog',
-              'subject': notification['subject'] ?? 'Notification',
-              'preview':
-                  notification['preview'] ?? notification['content'] ?? '',
-              'content': notification['content'] ?? '',
-              'category': notification['category'] ?? 'service',
-              'timestamp': notification['timestamp'] != null
-                  ? DateTime.parse(notification['timestamp'])
-                  : DateTime.now(),
-              'isRead': notification['isRead'] ?? false,
-              'attachments': notification['attachments'] ?? [],
-              'actions': notification['actions'] ?? [],
-            };
-          }).toList();
-          _isLoading = false;
-        });
+        final notificationsData = result['notifications'];
+        if (notificationsData is List) {
+          final notifications = notificationsData as List<dynamic>;
+          setState(() {
+            _allNotifications = notifications
+                .where((notification) => notification is Map<String, dynamic>)
+                .map((notification) {
+              final notif = notification as Map<String, dynamic>;
+              // Transform backend notification format to match UI expectations
+              return {
+                'id': int.tryParse(notif['id'].toString()) ?? 0,
+                'sender': notif['sender'] ?? 'Anopog',
+                'subject': notif['subject'] ?? 'Notification',
+                'preview': notif['preview'] ?? notif['content'] ?? '',
+                'content': notif['content'] ?? '',
+                'category': notif['category'] ?? 'service',
+                'timestamp': notif['timestamp'] != null
+                    ? DateTime.tryParse(notif['timestamp'].toString()) ??
+                        DateTime.now()
+                    : DateTime.now(),
+                'isRead': notif['isRead'] is bool
+                    ? notif['isRead']
+                    : (notif['isRead'].toString() == 'true'),
+                'attachments': notif['attachments'] is List
+                    ? notif['attachments']
+                    : (notif['attachments'] is Map
+                        ? (notif['attachments'] as Map).values.toList()
+                        : []),
+                'actions': notif['actions'] is List ? notif['actions'] : [],
+              };
+            }).toList();
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _errorMessage = 'Invalid notifications data format';
+            _isLoading = false;
+          });
+        }
       } else {
         setState(() {
           _errorMessage = result['message'] ?? 'Failed to fetch notifications';
@@ -265,10 +300,79 @@ class _NotificationsState extends State<Notifications>
     }
   }
 
+  Future<void> _fetchIssueReports() async {
+    if (_userId == null) return;
+
+    try {
+      final result =
+          await IssueReportingApiService.getIssueReports(int.parse(_userId!));
+
+      if (result['success']) {
+        final issuesData = result['data']['issues'];
+        if (issuesData is List) {
+          final issues = issuesData as List<dynamic>;
+          setState(() {
+            final issueNotifications = issues
+                .where((issue) => issue is Map<String, dynamic>)
+                .map((issue) {
+              final iss = issue as Map<String, dynamic>;
+              return {
+                'id': int.tryParse(iss['id'].toString()) ?? 0,
+                'sender': 'Anopog Service',
+                'subject': 'Issue Report Update',
+                'preview': iss['description'] ?? '',
+                'content':
+                    'Issue Category: ${iss['category'] ?? 'N/A'}\nPriority: ${iss['priority'] ?? 'N/A'}\nLocation: ${iss['location'] ?? 'N/A'}\nStatus: ${iss['status'] ?? 'N/A'}\nDescription: ${iss['description'] ?? ''}',
+                'category': 'service',
+                'timestamp': iss['created_at'] != null
+                    ? DateTime.tryParse(iss['created_at'].toString()) ??
+                        DateTime.now()
+                    : DateTime.now(),
+                'isRead': false,
+                'attachments': iss['photos'] is List ? iss['photos'] : [],
+                'actions': [],
+              };
+            }).toList();
+            _allNotifications.addAll(issueNotifications);
+          });
+        }
+      }
+      // If failed, just ignore for now
+    } catch (e) {
+      // Ignore errors for issues
+    }
+  }
+
+  Future<void> _loadFCMNotifications() async {
+    final prefs = await SharedPreferences.getInstance();
+    final fcmStrings = prefs.getStringList('fcm_notifications') ?? [];
+    final fcmNotifications = fcmStrings.map((s) {
+      final decoded = json.decode(s) as Map<String, dynamic>;
+      // Transform to match the format
+      return {
+        'id': int.tryParse(decoded['id'].toString()) ?? 0,
+        'sender': decoded['sender'] ?? 'Anopog',
+        'subject': decoded['subject'] ?? 'Notification',
+        'preview': decoded['preview'] ?? '',
+        'content': decoded['content'] ?? '',
+        'category': decoded['category'] ?? 'service',
+        'timestamp':
+            DateTime.tryParse(decoded['timestamp'] ?? '') ?? DateTime.now(),
+        'isRead': decoded['isRead'] ?? false,
+        'attachments': decoded['attachments'] ?? [],
+        'actions': decoded['actions'] ?? [],
+      };
+    }).toList();
+    setState(() {
+      _allNotifications.addAll(fcmNotifications);
+    });
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
+    _fcmSubscription?.cancel();
     super.dispose();
   }
 
@@ -331,7 +435,7 @@ class _NotificationsState extends State<Notifications>
   void _showNotificationDetail(Map<String, dynamic> notification) {
     // Mark as read when opened
     if (!(notification['isRead'] as bool? ?? true)) {
-      _markAsRead(notification['id'] as int);
+      _markAsRead(int.tryParse(notification['id'].toString()) ?? 0);
     }
 
     showModalBottomSheet(
@@ -346,18 +450,18 @@ class _NotificationsState extends State<Notifications>
           onMarkAsRead: () {
             final isRead = notification['isRead'] as bool? ?? false;
             if (isRead) {
-              _markAsUnread(notification['id'] as int);
+              _markAsUnread(int.tryParse(notification['id'].toString()) ?? 0);
             } else {
-              _markAsRead(notification['id'] as int);
+              _markAsRead(int.tryParse(notification['id'].toString()) ?? 0);
             }
             Navigator.pop(context);
           },
           onDelete: () {
-            _deleteNotification(notification['id'] as int);
+            _deleteNotification(int.tryParse(notification['id'].toString()) ?? 0);
             Navigator.pop(context);
           },
           onArchive: () {
-            _archiveNotification(notification['id'] as int);
+            _archiveNotification(int.tryParse(notification['id'].toString()) ?? 0);
             Navigator.pop(context);
           },
         ),
@@ -711,7 +815,7 @@ class _NotificationsState extends State<Notifications>
               itemCount: notifications.length,
               itemBuilder: (context, index) {
                 final notification = notifications[index];
-                final notificationId = notification['id'] as int;
+                final notificationId = int.tryParse(notification['id'].toString()) ?? 0;
                 final isSelected =
                     _selectedNotifications.contains(notificationId);
 

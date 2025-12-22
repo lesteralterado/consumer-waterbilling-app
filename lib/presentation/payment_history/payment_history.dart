@@ -4,10 +4,12 @@ import 'dart:io' if (dart.library.io) 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
+import '../../services/payment_api_service.dart';
 import './widgets/filter_bottom_sheet_widget.dart';
 import './widgets/filter_chips_widget.dart';
 import './widgets/monthly_group_widget.dart';
@@ -45,111 +47,86 @@ class _PaymentHistoryState extends State<PaymentHistory> {
     super.dispose();
   }
 
-  void _loadTransactions() {
+  Future<int?> _getUserId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userDataString = prefs.getString('user_data');
+      if (userDataString != null) {
+        final userData = json.decode(userDataString);
+        return userData['id'];
+      }
+    } catch (e) {
+      // Handle error silently
+    }
+    return null;
+  }
+
+  Future<void> _loadTransactions() async {
     setState(() {
       _isLoading = true;
     });
 
-    // Mock transaction data
-    _allTransactions = [
-      {
-        "transactionId": "TXN202410280001",
-        "amount": 1250.50,
-        "date": DateTime(2024, 10, 25, 14, 30),
-        "status": "successful",
-        "method": "GCash",
-        "billPeriod": "September 2024",
-        "receiptUrl": "https://example.com/receipt1.pdf",
-        "description": "Water Bill Payment - September 2024",
-        "processingFee": 15.00,
-        "referenceNumber": "GC240925001"
-      },
-      {
-        "transactionId": "TXN202410270002",
-        "amount": 980.75,
-        "date": DateTime(2024, 10, 22, 9, 15),
-        "status": "pending",
-        "method": "Credit Card",
-        "billPeriod": "August 2024",
-        "receiptUrl": "https://example.com/receipt2.pdf",
-        "description": "Water Bill Payment - August 2024",
-        "processingFee": 25.00,
-        "referenceNumber": "CC240822002"
-      },
-      {
-        "transactionId": "TXN202410260003",
-        "amount": 1450.25,
-        "date": DateTime(2024, 10, 20, 16, 45),
-        "status": "failed",
-        "method": "Bank Transfer",
-        "billPeriod": "July 2024",
-        "receiptUrl": null,
-        "description": "Water Bill Payment - July 2024",
-        "processingFee": 0.00,
-        "referenceNumber": "BT240720003",
-        "failureReason": "Insufficient funds"
-      },
-      {
-        "transactionId": "TXN202409250004",
-        "amount": 1125.00,
-        "date": DateTime(2024, 9, 25, 11, 20),
-        "status": "successful",
-        "method": "GCash",
-        "billPeriod": "June 2024",
-        "receiptUrl": "https://example.com/receipt4.pdf",
-        "description": "Water Bill Payment - June 2024",
-        "processingFee": 15.00,
-        "referenceNumber": "GC240625004"
-      },
-      {
-        "transactionId": "TXN202409220005",
-        "amount": 875.50,
-        "date": DateTime(2024, 9, 22, 13, 10),
-        "status": "successful",
-        "method": "Cash",
-        "billPeriod": "May 2024",
-        "receiptUrl": "https://example.com/receipt5.pdf",
-        "description": "Water Bill Payment - May 2024",
-        "processingFee": 0.00,
-        "referenceNumber": "CASH240522005"
-      },
-      {
-        "transactionId": "TXN202408280006",
-        "amount": 1350.75,
-        "date": DateTime(2024, 8, 28, 10, 30),
-        "status": "successful",
-        "method": "Credit Card",
-        "billPeriod": "April 2024",
-        "receiptUrl": "https://example.com/receipt6.pdf",
-        "description": "Water Bill Payment - April 2024",
-        "processingFee": 25.00,
-        "referenceNumber": "CC240428006"
-      },
-      {
-        "transactionId": "TXN202408250007",
-        "amount": 1200.00,
-        "date": DateTime(2024, 8, 25, 15, 45),
-        "status": "pending",
-        "method": "Bank Transfer",
-        "billPeriod": "March 2024",
-        "receiptUrl": null,
-        "description": "Water Bill Payment - March 2024",
-        "processingFee": 20.00,
-        "referenceNumber": "BT240325007"
-      },
-      {
-        "transactionId": "TXN202407280008",
-        "amount": 950.25,
-        "date": DateTime(2024, 7, 28, 12, 15),
-        "status": "successful",
-        "method": "GCash",
-        "billPeriod": "February 2024",
-        "receiptUrl": "https://example.com/receipt8.pdf",
-        "description": "Water Bill Payment - February 2024",
-        "processingFee": 15.00,
-        "referenceNumber": "GC240228008"
-      },
-    ];
+    try {
+      final userId = await _getUserId();
+      if (userId == null) {
+        // Handle case where user is not logged in
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final result = await PaymentApiService.getPaymentsByUserId(userId);
+
+      if (result['success']) {
+        final payments = result['data'] as List<dynamic>;
+
+        // Map API response to transaction format
+        _allTransactions = payments.map((payment) {
+          final paymentDate = DateTime.parse(payment['payment_date']);
+          final billId = payment['bill_id'];
+          final amountPaid = payment['amount_paid'] as double;
+          final paymentMethod = payment['payment_method'];
+
+          return {
+            "transactionId": "TXN${paymentDate.millisecondsSinceEpoch}",
+            "amount": amountPaid,
+            "date": paymentDate,
+            "status":
+                "successful", // Assuming all payments from API are successful
+            "method": paymentMethod,
+            "billPeriod": _getBillPeriodFromDate(paymentDate),
+            "receiptUrl": null, // API doesn't provide receipt URL
+            "description": "Water Bill Payment - Bill #$billId",
+            "processingFee": 0.00, // Default processing fee
+            "referenceNumber":
+                "REF${billId}_${paymentDate.millisecondsSinceEpoch}",
+          };
+        }).toList();
+      } else {
+        // Handle API error
+        _allTransactions = [];
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text(result['message'] ?? 'Failed to load payment history'),
+              backgroundColor: AppTheme.lightTheme.colorScheme.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      _allTransactions = [];
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading payment history: $e'),
+            backgroundColor: AppTheme.lightTheme.colorScheme.error,
+          ),
+        );
+      }
+    }
 
     _applyFiltersAndSearch();
 
@@ -158,11 +135,26 @@ class _PaymentHistoryState extends State<PaymentHistory> {
     });
   }
 
-  Future<void> _refreshTransactions() async {
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
+  String _getBillPeriodFromDate(DateTime date) {
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+    return '${months[date.month - 1]} ${date.year}';
+  }
 
-    _loadTransactions();
+  Future<void> _refreshTransactions() async {
+    await _loadTransactions();
   }
 
   void _onSearchChanged() {

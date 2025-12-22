@@ -10,16 +10,26 @@ class AuthApiService {
     required String password,
   }) async {
     try {
+      final requestBody = json.encode({
+        'username': username,
+        'password': password,
+      });
+
+      // ignore: avoid_print
+      print('DEBUG: Login request body: $requestBody');
+
       final response = await http.post(
         Uri.parse('$baseUrl/login'),
         headers: {
           'Content-Type': 'application/json',
         },
-        body: json.encode({
-          'username': username,
-          'password': password,
-        }),
+        body: requestBody,
       );
+
+      // ignore: avoid_print
+      print('DEBUG: Login response status: ${response.statusCode}');
+      // ignore: avoid_print
+      print('DEBUG: Login response body: ${response.body}');
 
       final data = json.decode(response.body);
 
