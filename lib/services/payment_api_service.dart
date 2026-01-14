@@ -116,6 +116,64 @@ class PaymentApiService {
     }
   }
 
+  /// Pay bill via backend - marks bill as paid
+  static Future<Map<String, dynamic>> payBill({
+    required int billId,
+    required String paymentMethod,
+    required double amountPaid,
+  }) async {
+    try {
+      print('Paying bill to backend...');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/bills/pay'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'bill_id': billId,
+          'payment_method': paymentMethod,
+          'amount_paid': amountPaid,
+        }),
+      );
+
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = json.decode(response.body);
+        return {
+          'success': true,
+          'message': 'Bill paid successfully',
+          'data': data,
+        };
+      } else {
+        print('Bill payment failed with status: ${response.statusCode}');
+        print('Response body: ${response.body}');
+        try {
+          final errorData = json.decode(response.body);
+          print('Parsed error data: $errorData');
+          return {
+            'success': false,
+            'message': errorData['message'] ?? 'Bill payment failed',
+          };
+        } catch (e) {
+          print('Failed to parse error response: $e');
+          return {
+            'success': false,
+            'message': 'Bill payment failed (Status: ${response.statusCode})',
+          };
+        }
+      }
+    } catch (e) {
+      print('Error paying bill: $e');
+      return {
+        'success': false,
+        'message': 'Error: Cannot connect to server - $e',
+      };
+    }
+  }
+
   /// Submit payment to backend
   /// Schema: payments (bill_id, payment_date, payment_method, amount_paid)
   static Future<Map<String, dynamic>> submitPayment({

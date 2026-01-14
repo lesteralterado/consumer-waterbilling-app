@@ -55,27 +55,25 @@ class _PaymongoPaymentState extends State<PaymongoPayment> {
       // Simulate payment processing
       await Future.delayed(const Duration(seconds: 2));
 
-      // Submit payment to backend (don't block on failure)
+      // Pay bill to backend (don't block on failure)
       final paymentDate = DateTime.now().toString().split(' ')[0];
-      print('DEBUG: Submitting payment with:');
+      print('DEBUG: Paying bill with:');
       print('  billId: $billId');
-      print('  paymentDate: $paymentDate');
       print('  paymentMethod: $paymentMethod');
       print('  amountPaid: $amount');
 
-      // Try to submit payment but don't fail the payment if backend fails
+      // Try to pay bill but don't fail the payment if backend fails
       Map<String, dynamic>? paymentResult;
       try {
-        final result = await PaymentApiService.submitPayment(
+        final result = await PaymentApiService.payBill(
           billId: billId,
-          paymentDate: paymentDate,
           paymentMethod: paymentMethod,
           amountPaid: amount,
         );
         paymentResult = result;
-        print('DEBUG: Payment submission result: $result');
+        print('DEBUG: Bill payment result: $result');
       } catch (e) {
-        print('DEBUG: Payment submission failed with exception: $e');
+        print('DEBUG: Bill payment failed with exception: $e');
         paymentResult = {
           'success': false,
           'message': 'Backend submission failed'
